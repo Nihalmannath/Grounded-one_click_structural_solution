@@ -9,9 +9,9 @@ Original file is located at
 
 
 
-pip install rhino3dm
 
-pip install openseespy
+
+
 
 import rhino3dm
 import numpy as np
