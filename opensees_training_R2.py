@@ -68,7 +68,7 @@ def add_structural_elements(edges):
     return np.array(columns), np.array(beams)
 
 # Load the Rhino 3DM file
-file_path = "/content/basicformMETERS.3dm"  # Update with your file path
+file_path = "C:\Users\LEGION\Documents\GitHub\Octopusie\Reference Files\all_edges.csv"  # Update with your file path
 
 try:
     model = rhino3dm.File3dm.Read(file_path)
