@@ -19,94 +19,141 @@ class GLViewWidgetWithPicking(gl.GLViewWidget):
     pickFaceSignal = pyqtSignal(int)  # Signal to emit when a face is picked
     hoverFaceSignal = pyqtSignal(int)  # Signal to emit when hovering over a face
     dragSelectionSignal = pyqtSignal(list)  # Signal to emit faces selected by dragging
+    pickGeometrySignal = pyqtSignal(object)  # Signal to emit when a geometry is picked
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.selection_mode = False
         self.mesh_data = None
         self.hover_face = None
+        self.selection_type = "Face"  # Can be "Face" or "Geometry"
         
         # For drag selection
         self.is_dragging = False
         self.drag_start_pos = None
+        self.current_drag_pos = None
         self.faces_under_drag = []
+        
+        # For geometry selection
+        self.geometries = []  # List of geometry objects in the scene
+        self.selected_geometry = None
+        self.hover_geometry = None
+        
+        # Override the GLViewWidget's default mouse behavior
+        self.setMouseTracking(True)
         
     def setMeshData(self, mesh_data):
         """Store mesh data for picking"""
         self.mesh_data = mesh_data
         
+    def addGeometry(self, geometry_obj, mesh_item):
+        """Add a geometry object to the selection list"""
+        self.geometries.append({
+            'data': geometry_obj,
+            'mesh_item': mesh_item,
+            'bounds': geometry_obj.bounds if hasattr(geometry_obj, 'bounds') else None
+        })
+        
+    def clearGeometries(self):
+        """Clear the list of selectable geometries"""
+        self.geometries = []
+        self.selected_geometry = None
+        self.hover_geometry = None
+        
+    def setSelectionType(self, selection_type):
+        """Set selection type (Face or Geometry)"""
+        self.selection_type = selection_type
+        
     def enableSelectionMode(self, enable=True):
         """Enable or disable selection mode"""
         self.selection_mode = enable
         
+    def paintGL(self):
+        """Override paintGL to draw selection box"""
+        super().paintGL()
+        
+        # Draw selection box if dragging
+        if self.selection_mode and self.is_dragging and self.drag_start_pos and self.current_drag_pos:
+            ogl.glMatrixMode(ogl.GL_PROJECTION)
+            ogl.glPushMatrix()
+            ogl.glLoadIdentity()
+            viewport = ogl.glGetIntegerv(ogl.GL_VIEWPORT)
+            ogl.glOrtho(0, viewport[2], 0, viewport[3], -1, 1)
+            
+            ogl.glMatrixMode(ogl.GL_MODELVIEW)
+            ogl.glPushMatrix()
+            ogl.glLoadIdentity()
+            
+            # Draw selection rectangle
+            ogl.glColor4f(0.2, 0.7, 1.0, 0.3)  # Semi-transparent blue
+            ogl.glPolygonMode(ogl.GL_FRONT_AND_BACK, ogl.GL_FILL)
+            ogl.glBegin(ogl.GL_QUADS)
+            # Convert to OpenGL coordinates (origin at bottom-left)
+            x1, y1 = self.drag_start_pos.x(), viewport[3] - self.drag_start_pos.y()
+            x2, y2 = self.current_drag_pos.x(), viewport[3] - self.current_drag_pos.y()
+            ogl.glVertex2f(x1, y1)
+            ogl.glVertex2f(x2, y1)
+            ogl.glVertex2f(x2, y2)
+            ogl.glVertex2f(x1, y2)
+            ogl.glEnd()
+            
+            # Draw selection rectangle border
+            ogl.glColor4f(0.2, 0.7, 1.0, 0.7)  # Less transparent blue
+            ogl.glLineWidth(2.0)
+            ogl.glPolygonMode(ogl.GL_FRONT_AND_BACK, ogl.GL_LINE)
+            ogl.glBegin(ogl.GL_LINE_LOOP)
+            ogl.glVertex2f(x1, y1)
+            ogl.glVertex2f(x2, y1)
+            ogl.glVertex2f(x2, y2)
+            ogl.glVertex2f(x1, y2)
+            ogl.glEnd()
+            
+            ogl.glPopMatrix()
+            ogl.glMatrixMode(ogl.GL_PROJECTION)
+            ogl.glPopMatrix()
+        
     def mousePressEvent(self, ev):
-        if self.selection_mode and self.mesh_data is not None and ev.button() == Qt.LeftButton:
-            # Get mouse position
-            pos = ev.pos()
-            
-            # Start drag selection
-            self.is_dragging = True
-            self.drag_start_pos = pos
-            self.faces_under_drag = []
-            
-            # Also capture the face under cursor when starting the drag
-            face_idx = self.pick_face(pos)
-            if face_idx is not None and face_idx not in self.faces_under_drag:
-                self.faces_under_drag.append(face_idx)
-                
-            # Don't call parent handler yet to prevent camera movement during selection
-            ev.accept()
+        # Middle mouse button for camera rotation/movement
+        if ev.button() == Qt.MiddleButton:
+            super().mousePressEvent(ev)
             return
             
-        # Default behavior for camera control
-        super().mousePressEvent(ev)
-    
-    def mouseMoveEvent(self, ev):
-        """Handle mouse movement for hover highlighting and drag selection"""
-        if self.selection_mode and self.mesh_data is not None:
+        # Left button for selection
+        if self.selection_mode and ev.button() == Qt.LeftButton:
             # Get mouse position
             pos = ev.pos()
             
-            if self.is_dragging:
-                # Add any face under the drag to the selection list
-                face_idx = self.pick_face(pos)
-                if face_idx is not None and face_idx not in self.faces_under_drag:
-                    self.faces_under_drag.append(face_idx)
-                    # Emit continuous updates for visual feedback during drag
-                    self.dragSelectionSignal.emit(self.faces_under_drag)
+            if self.selection_type == "Face" and self.mesh_data is not None:
+                # Start drag selection box for faces
+                self.is_dragging = True
+                self.drag_start_pos = pos
+                self.current_drag_pos = pos
+                self.faces_under_drag = []
+                
+                # Prevent default handling
+                ev.accept()
+                self.update()  # Trigger repaint for selection box
+                return
+            elif self.selection_type == "Geometry" and self.geometries:
+                # Pick geometry directly without dragging
+                geometry_idx = self.pick_geometry(pos)
+                if geometry_idx is not None:
+                    self.selected_geometry = geometry_idx
+                    self.pickGeometrySignal.emit(self.geometries[geometry_idx])
                 ev.accept()
                 return
-            else:
-                # Just hover behavior when not dragging
-                face_idx = self.pick_face(pos)
-                
-                # Only emit if the hover face has changed
-                if face_idx != self.hover_face:
-                    self.hover_face = face_idx
-                    self.hoverFaceSignal.emit(face_idx if face_idx is not None else -1)
-        
-        # Default behavior for camera control (only when not dragging)
-        if not self.is_dragging:
-            super().mouseMoveEvent(ev)
-    
-    def mouseReleaseEvent(self, ev):
-        """Handle mouse release to complete drag selection"""
-        if self.selection_mode and self.is_dragging and ev.button() == Qt.LeftButton:
-            self.is_dragging = False
-            # Emit the final list of faces selected in this drag operation
-            if self.faces_under_drag:
-                self.dragSelectionSignal.emit(self.faces_under_drag)
-            ev.accept()
-            return
             
-        # Default behavior
-        super().mouseReleaseEvent(ev)
-        
-    def pick_face(self, mouse_pos):
+        # For any other buttons, use default behavior
+        super().mousePressEvent(ev)
+    
+    def pick_geometry(self, mouse_pos):
         """
-        Pick a face from the mesh using ray casting
-        Returns the face index that was hit, or None if no hit
+        Pick a geometry from the scene
+        Returns the index of the geometry that was hit, or None if no hit
         """
+        if not self.geometries:
+            return None
+            
         # Get viewport dimensions
         viewport = ogl.glGetIntegerv(ogl.GL_VIEWPORT)
         
@@ -129,106 +176,168 @@ class GLViewWidgetWithPicking(gl.GLViewWidget):
             ray_direction = np.array([wx2-wx1, wy2-wy1, wz2-wz1])
             ray_direction = ray_direction / np.linalg.norm(ray_direction)
             
-            # Improved face picking with proper ray-triangle intersection
-            if hasattr(self.mesh_data, 'faces') and hasattr(self.mesh_data, 'vertices'):
-                faces = self.mesh_data.faces
-                vertices = self.mesh_data.vertices
-                
-                closest_face = None
-                min_distance = float('inf')
-                
-                # Calculate face centers for efficient preliminary filtering
-                if not hasattr(self.mesh_data, 'triangles_center'):
-                    self.mesh_data.triangles_center = np.array([
-                        np.mean([vertices[f[0]], vertices[f[1]], vertices[f[2]]], axis=0)
-                        for f in faces
-                    ])
-                centers = self.mesh_data.triangles_center
-                
-                # First, filter faces based on dot product with ray direction
-                # This eliminates faces that are facing away from the camera
-                for i, face in enumerate(faces):
-                    # Calculate face normal
-                    v0, v1, v2 = vertices[face[0]], vertices[face[1]], vertices[face[2]]
-                    face_normal = np.cross(v1 - v0, v2 - v0)
-                    face_normal = face_normal / (np.linalg.norm(face_normal) + 1e-10)  # Avoid division by zero
-                    
-                    # Skip faces that face away from the camera (backface culling)
-                    if np.dot(face_normal, ray_direction) >= 0:
-                        continue
-                    
-                    # Perform ray-triangle intersection (Möller–Trumbore algorithm)
-                    edge1 = v1 - v0
-                    edge2 = v2 - v0
-                    h = np.cross(ray_direction, edge2)
-                    a = np.dot(edge1, h)
-                    
-                    # If ray is parallel to triangle
-                    if abs(a) < 1e-6:
-                        continue
-                    
-                    f = 1.0 / a
-                    s = ray_origin - v0
-                    u = f * np.dot(s, h)
-                    
-                    # Ray misses triangle
-                    if u < 0.0 or u > 1.0:
-                        continue
-                    
-                    q = np.cross(s, edge1)
-                    v = f * np.dot(ray_direction, q)
-                    
-                    # Ray misses triangle
-                    if v < 0.0 or u + v > 1.0:
-                        continue
-                    
-                    # Distance to intersection
-                    t = f * np.dot(edge2, q)
-                    
-                    # Intersection is behind ray origin
-                    if t < 0:
-                        continue
-                    
-                    # This is the closest intersection so far
-                    if t < min_distance:
-                        min_distance = t
-                        closest_face = i
-                
-                return closest_face
+            # Find closest geometry
+            closest_geometry = None
+            min_distance = float('inf')
             
-            # Fallback to center-based picking if the above fails
-            elif hasattr(self.mesh_data, 'triangles_center'):
-                centers = self.mesh_data.triangles_center
+            for i, geom in enumerate(self.geometries):
+                # Check if the geometry has a mesh data to test intersection with
+                if hasattr(geom['data'], 'faces') and hasattr(geom['data'], 'vertices'):
+                    mesh = geom['data']
+                    # Use ray-triangle intersection to check if the ray hits any face in the geometry
+                    
+                    # For efficiency, first check if ray intersects the bounding box
+                    if hasattr(mesh, 'bounds'):
+                        bbox_min, bbox_max = mesh.bounds
+                        # Simple ray-box intersection test
+                        if not self.ray_bbox_intersect(ray_origin, ray_direction, bbox_min, bbox_max):
+                            continue
+                    
+                    faces = mesh.faces
+                    vertices = mesh.vertices
+                    
+                    # Check for intersection with any face in the geometry
+                    for face in faces:
+                        v0, v1, v2 = vertices[face[0]], vertices[face[1]], vertices[face[2]]
+                        
+                        # Möller–Trumbore ray-triangle intersection
+                        edge1 = v1 - v0
+                        edge2 = v2 - v0
+                        h = np.cross(ray_direction, edge2)
+                        a = np.dot(edge1, h)
+                        
+                        # If ray is parallel to triangle
+                        if abs(a) < 1e-6:
+                            continue
+                        
+                        f = 1.0 / a
+                        s = ray_origin - v0
+                        u = f * np.dot(s, h)
+                        
+                        # Ray misses triangle
+                        if u < 0.0 or u > 1.0:
+                            continue
+                        
+                        q = np.cross(s, edge1)
+                        v = f * np.dot(ray_direction, q)
+                        
+                        # Ray misses triangle
+                        if v < 0.0 or u + v > 1.0:
+                            continue
+                        
+                        # Distance to intersection
+                        t = f * np.dot(edge2, q)
+                        
+                        # Intersection is behind ray origin
+                        if t < 0:
+                            continue
+                        
+                        # This is the closest intersection so far
+                        if t < min_distance:
+                            min_distance = t
+                            closest_geometry = i
+                            break  # Found an intersection with this geometry, no need to check more faces
                 
-                closest_face = None
-                min_distance = float('inf')
-                
-                for i, center in enumerate(centers):
-                    # Vector from ray origin to face center
-                    to_center = center - ray_origin
-                    
-                    # Project onto ray direction
-                    projection = np.dot(to_center, ray_direction)
-                    
-                    # Skip faces behind the ray
-                    if projection < 0:
-                        continue
-                    
-                    # Distance from ray to center
-                    closest_point = ray_origin + projection * ray_direction
-                    distance = np.linalg.norm(center - closest_point)
-                    
-                    # Check if this is closer than previous closest
-                    if distance < min_distance and distance < 0.2:  # Adding threshold for hit detection
-                        min_distance = distance
-                        closest_face = i
-                
-                return closest_face
+            return closest_geometry
             
-            return None
         except Exception as e:
-            print(f"Picking error: {e}")
+            print(f"Geometry picking error: {e}")
             return None
+    
+    def ray_bbox_intersect(self, ray_origin, ray_direction, bbox_min, bbox_max):
+        """Simple ray-box intersection test"""
+        # Calculate inverse ray direction to avoid division
+        inv_dir = 1.0 / (ray_direction + 1e-10)  # Avoid division by zero
+        
+        # Calculate intersection distances
+        t1 = (bbox_min[0] - ray_origin[0]) * inv_dir[0]
+        t2 = (bbox_max[0] - ray_origin[0]) * inv_dir[0]
+        t3 = (bbox_min[1] - ray_origin[1]) * inv_dir[1]
+        t4 = (bbox_max[1] - ray_origin[1]) * inv_dir[1]
+        t5 = (bbox_min[2] - ray_origin[2]) * inv_dir[2]
+        t6 = (bbox_max[2] - ray_origin[2]) * inv_dir[2]
+        
+        # Find the maximum entry point
+        tmin = max(min(t1, t2), min(t3, t4), min(t5, t6))
+        # Find the minimum exit point
+        tmax = min(max(t1, t2), max(t3, t4), max(t5, t6))
+        
+        # If tmax < 0, ray is intersecting AABB, but the whole AABB is behind us
+        if tmax < 0:
+            return False
+            
+        # If tmin > tmax, ray doesn't intersect AABB
+        if tmin > tmax:
+            return False
+            
+        return True
+    
+    def mouseMoveEvent(self, ev):
+        # Update current position for drag box
+        if self.selection_mode and self.is_dragging:
+            self.current_drag_pos = ev.pos()
+            self.update()  # Trigger repaint for selection box
+            ev.accept()
+            return
+            
+        # Hover behavior when not dragging
+        if self.selection_mode:
+            # Get mouse position
+            pos = ev.pos()
+            
+            if self.selection_type == "Face" and self.mesh_data is not None:
+                face_idx = self.pick_face(pos)
+                
+                # Only emit if the hover face has changed
+                if face_idx != self.hover_face:
+                    self.hover_face = face_idx
+                    self.hoverFaceSignal.emit(face_idx if face_idx is not None else -1)
+            elif self.selection_type == "Geometry" and self.geometries:
+                geom_idx = self.pick_geometry(pos)
+                
+                # Only update if the hover geometry has changed
+                if geom_idx != self.hover_geometry:
+                    # Reset old hover highlight
+                    if self.hover_geometry is not None and self.hover_geometry < len(self.geometries):
+                        old_geom = self.geometries[self.hover_geometry]
+                        if 'mesh_item' in old_geom and old_geom['mesh_item'] is not None:
+                            # Reset color if it's not selected
+                            if self.hover_geometry != self.selected_geometry:
+                                old_geom['mesh_item'].setColor(pg_color((180, 180, 255), 0.5))
+                    
+                    # Set new hover highlight
+                    self.hover_geometry = geom_idx
+                    if geom_idx is not None and geom_idx < len(self.geometries):
+                        geom = self.geometries[geom_idx]
+                        if 'mesh_item' in geom and geom['mesh_item'] is not None:
+                            # Set hover color (yellow) if it's not selected
+                            if geom_idx != self.selected_geometry:
+                                geom['mesh_item'].setColor(pg_color((255, 255, 0), 0.8))
+        
+        # Default behavior for camera control
+        super().mouseMoveEvent(ev)
+    
+    def mouseReleaseEvent(self, ev):
+        # Handle selection box completion
+        if self.selection_mode and self.is_dragging and ev.button() == Qt.LeftButton:
+            # Only use the selection box for face selection
+            if self.selection_type == "Face":
+                # Calculate which faces are in the selection box
+                self.faces_under_drag = self.get_faces_in_selection_box(
+                    self.drag_start_pos, self.current_drag_pos)
+                
+                # Emit the selected faces
+                if self.faces_under_drag:
+                    self.dragSelectionSignal.emit(self.faces_under_drag)
+            
+            # Reset drag state
+            self.is_dragging = False
+            self.update()  # Trigger repaint to remove selection box
+            ev.accept()
+            return
+            
+        # Default behavior
+        super().mouseReleaseEvent(ev)
 
 class StructuralSystemGenerator(QMainWindow):
     def __init__(self):
@@ -238,9 +347,10 @@ class StructuralSystemGenerator(QMainWindow):
         
         # Model data
         self.mesh = None
-        self.selected_faces = []
         self.structural_elements = []
         self.selection_active = False
+        self.model_visible = True  # Track model visibility
+        self.structural_systems = []  # Track structural systems separately
         
         # Create models directory if it doesn't exist
         self.models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_models")
@@ -255,9 +365,7 @@ class StructuralSystemGenerator(QMainWindow):
         
         # 3D Viewport with picking support
         self.view3d = GLViewWidgetWithPicking()
-        self.view3d.pickFaceSignal.connect(self.on_face_picked)
-        self.view3d.hoverFaceSignal.connect(self.on_face_hovered)
-        self.view3d.dragSelectionSignal.connect(self.on_faces_drag_selected)
+        self.view3d.pickGeometrySignal.connect(self.on_geometry_selected)
         main_layout.addWidget(self.view3d, 3)
         
         # Create grid for reference
@@ -299,25 +407,28 @@ class StructuralSystemGenerator(QMainWindow):
         model_btn_layout.addWidget(delete_btn)
         
         models_layout.addLayout(model_btn_layout)
+
+        # Model visibility toggle
+        self.visibility_btn = QPushButton("Hide Model")
+        self.visibility_btn.clicked.connect(self.toggle_model_visibility)
+        models_layout.addWidget(self.visibility_btn)
+        
         models_group.setLayout(models_layout)
         model_layout.addWidget(models_group)
         
-        # Selection group
+        # Selection group - modified to only have geometry selection
         selection_group = QGroupBox("Selection")
         selection_layout = QVBoxLayout()
         
-        self.selection_mode = QComboBox()
-        self.selection_mode.addItems(["Face", "Edge", "Vertex"])
-        selection_layout.addWidget(self.selection_mode)
-        
+        # Remove selection type dropdown, always use Geometry
         select_btn = QPushButton("Enter Selection Mode")
         select_btn.clicked.connect(self.enter_selection_mode)
         selection_layout.addWidget(select_btn)
         
-        # Hover hint
-        hover_hint = QLabel("Hover over faces to highlight them for selection")
-        hover_hint.setStyleSheet("color: blue;")
-        selection_layout.addWidget(hover_hint)
+        # Update hover hint for geometry selection
+        self.hover_hint = QLabel("Hover over geometry to highlight it for selection")
+        self.hover_hint.setStyleSheet("color: blue;")
+        selection_layout.addWidget(self.hover_hint)
         
         # Selection status label
         self.selection_status = QLabel("Selection Mode: Inactive")
@@ -392,6 +503,30 @@ class StructuralSystemGenerator(QMainWindow):
         export_btn = QPushButton("Export Structure")
         export_btn.clicked.connect(self.export_structure)
         systems_layout.addWidget(export_btn)
+
+        # Systems management group
+        systems_manage_group = QGroupBox("Systems Management")
+        systems_manage_layout = QVBoxLayout()
+        
+        # Systems list
+        systems_manage_layout.addWidget(QLabel("Applied Systems:"))
+        self.systems_list = QListWidget()
+        systems_manage_layout.addWidget(self.systems_list)
+        
+        # Systems management buttons
+        systems_btn_layout = QHBoxLayout()
+        
+        delete_system_btn = QPushButton("Delete Selected System")
+        delete_system_btn.clicked.connect(self.delete_system)
+        systems_btn_layout.addWidget(delete_system_btn)
+        
+        clear_all_systems_btn = QPushButton("Clear All Systems")
+        clear_all_systems_btn.clicked.connect(self.clear_all_systems)
+        systems_btn_layout.addWidget(clear_all_systems_btn)
+        
+        systems_manage_layout.addLayout(systems_btn_layout)
+        systems_manage_group.setLayout(systems_manage_layout)
+        systems_layout.addWidget(systems_manage_group)
         
         # Add systems tab
         tabs.addTab(systems_tab, "Structural Systems")
@@ -411,99 +546,6 @@ class StructuralSystemGenerator(QMainWindow):
         
         # Refresh models list
         self.refresh_models_list()
-    
-    def refresh_models_list(self):
-        """Refresh the list of local models"""
-        self.models_list.clear()
-        if os.path.exists(self.models_dir):
-            for filename in os.listdir(self.models_dir):
-                if filename.lower().endswith(('.obj', '.stl', '.ply', '.glb', '.3ds')):
-                    self.models_list.addItem(filename)
-    
-    def upload_model(self):
-        """Upload a 3D model to the local directory"""
-        file_dialog = QFileDialog()
-        file_path, _ = file_dialog.getOpenFileName(
-            self, "Select 3D Model", "", 
-            "3D Models (*.obj *.stl *.ply *.glb *.3ds);;All Files (*)"
-        )
-        
-        if file_path:
-            # Copy the file to our local models directory
-            filename = os.path.basename(file_path)
-            dest_path = os.path.join(self.models_dir, filename)
-            
-            try:
-                # Copy the file
-                with open(file_path, 'rb') as src_file:
-                    with open(dest_path, 'wb') as dest_file:
-                        dest_file.write(src_file.read())
-                
-                # Refresh the list and load the model
-                self.refresh_models_list()
-                self.load_model(dest_path)
-                
-                # Select the item in the list
-                items = self.models_list.findItems(filename, Qt.MatchExactly)
-                if items:
-                    self.models_list.setCurrentItem(items[0])
-                    
-                QMessageBox.information(self, "Upload Successful", 
-                                        f"Model '{filename}' uploaded successfully.")
-            except Exception as e:
-                QMessageBox.critical(self, "Upload Failed", 
-                                     f"Failed to upload model: {str(e)}")
-    
-    def delete_model(self):
-        """Delete the selected model from the local directory"""
-        current_item = self.models_list.currentItem()
-        if current_item:
-            filename = current_item.text()
-            file_path = os.path.join(self.models_dir, filename)
-            
-            reply = QMessageBox.question(
-                self, "Confirm Deletion",
-                f"Are you sure you want to delete '{filename}'?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-            )
-            
-            if reply == QMessageBox.Yes:
-                try:
-                    os.remove(file_path)
-                    self.refresh_models_list()
-                    
-                    # Clear the view if we deleted the currently loaded model
-                    self.clear_view()
-                    
-                    QMessageBox.information(self, "Deletion Successful", 
-                                           f"Model '{filename}' deleted successfully.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Deletion Failed", 
-                                        f"Failed to delete model: {str(e)}")
-    
-    def on_model_selected(self, item):
-        """Load the selected model when clicked in the list"""
-        if item:
-            filename = item.text()
-            file_path = os.path.join(self.models_dir, filename)
-            self.load_model(file_path)
-    
-    def clear_view(self):
-        """Clear the 3D view and reset state"""
-        self.view3d.clear()
-        
-        # Add grid back
-        grid = gl.GLGridItem()
-        grid.setSize(10, 10, 1)
-        grid.setSpacing(1, 1, 1)
-        self.view3d.addItem(grid)
-        
-        # Reset state
-        self.mesh = None
-        self.selected_faces = []
-        self.structural_elements = []
-        self.selection_active = False
-        self.selection_status.setText("Selection Mode: Inactive")
     
     def load_model(self, file_path=None):
         """Load a 3D model file"""
@@ -532,25 +574,34 @@ class StructuralSystemGenerator(QMainWindow):
                 # Apply the translation
                 self.mesh.vertices += translation
                 
-                # Display the mesh with reduced opacity
+                # Display the mesh with improved visibility
                 vertices = self.mesh.vertices
                 faces = self.mesh.faces
                 
-                # Create face colors with reduced opacity (0.3)
-                face_colors = np.array([[0.7, 0.7, 1.0, 0.3] for _ in range(len(faces))])
+                # Make the face colors more transparent with lower opacity (0.1)
+                face_colors = np.array([[0.7, 0.7, 1.0, 0.1] for _ in range(len(faces))])
                 
-                # Create the mesh item
+                # Create the mesh item with smooth shading and no edges for cleaner visualization
                 mesh_item = gl.GLMeshItem(
                     vertexes=vertices, 
                     faces=faces, 
                     faceColors=face_colors,
-                    smooth=False,
-                    drawEdges=True,
-                    edgeColor=(0.9, 0.9, 1.0, 1.0)  # Light blue-white color for edges
+                    smooth=True,
+                    drawEdges=False,
+                    shader='shaded'  # Use shaded shader for better lighting
                 )
                 self.view3d.addItem(mesh_item)
                 self.mesh_item = mesh_item
+                
+                # Set mesh data for picking
                 self.view3d.setMeshData(self.mesh)
+                
+                # Add geometry for geometry picking
+                self.view3d.addGeometry(self.mesh, mesh_item)
+                
+                # Find coplanar surface groups
+                self.coplanar_groups = self.find_coplanar_surfaces(self.mesh)
+                print(f"Found {len(self.coplanar_groups)} coplanar surface groups")
                 
             except Exception as e:
                 QMessageBox.critical(self, "Loading Failed", 
@@ -560,7 +611,7 @@ class StructuralSystemGenerator(QMainWindow):
         else:
             # For demo, create a simple cube mesh if no file is provided
             self.load_default_cube()
-    
+
     def load_default_cube(self):
         """Load a default cube mesh for demonstration"""
         self.mesh = trimesh.creation.box(extents=[2, 2, 2])
@@ -575,260 +626,51 @@ class StructuralSystemGenerator(QMainWindow):
             translation = np.array([0, 0, -min_z])
             self.mesh.vertices += translation
         
-        # Display the mesh with reduced opacity
+        # Display the mesh with higher opacity for better visibility
         vertices = self.mesh.vertices
         faces = self.mesh.faces
         
-        # Create face colors with reduced opacity (0.3)
-        face_colors = np.array([[0.7, 0.7, 1.0, 0.3] for _ in range(len(faces))])
+        # Make the face colors more transparent and don't show edges
+        face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
         
-        # Create the mesh item
+        # Create the mesh item - with no edges
         mesh_item = gl.GLMeshItem(
             vertexes=vertices, 
             faces=faces, 
             faceColors=face_colors,
-            smooth=False,
-            drawEdges=True,
-            edgeColor=(0.9, 0.9, 1.0, 1.0)  # Light blue-white color for edges
+            smooth=True,
+            drawEdges=False
         )
         self.view3d.addItem(mesh_item)
         self.mesh_item = mesh_item
         self.view3d.setMeshData(self.mesh)
         
+        # Add geometry for geometry picking
+        self.view3d.addGeometry(self.mesh, mesh_item)
+        
         QMessageBox.information(self, "Default Model", 
                                "Loaded a default cube mesh for demonstration.")
-    
-    def update_system_parameters(self):
-        """Update the parameters form based on the selected system type"""
-        # Clear any existing dynamic parameters
-        for widget in self.dynamic_params_widgets.values():
-            widget_item = self.params_layout.labelForField(widget)
-            if widget_item:
-                self.params_layout.removeRow(widget_item)
-        self.dynamic_params_widgets = {}
-        
-        system_type = self.system_type.currentText()
-        
-        # Add system-specific parameters
-        if system_type == "Grid":
-            # Column spacing
-            self.dynamic_params_widgets["column_spacing"] = QDoubleSpinBox()
-            self.dynamic_params_widgets["column_spacing"].setRange(0.1, 10.0)
-            self.dynamic_params_widgets["column_spacing"].setValue(1.0)
-            self.dynamic_params_widgets["column_spacing"].setSingleStep(0.1)
-            self.params_layout.addRow("Column Spacing:", self.dynamic_params_widgets["column_spacing"])
-            
-            # Column thickness
-            self.dynamic_params_widgets["column_thickness"] = QDoubleSpinBox()
-            self.dynamic_params_widgets["column_thickness"].setRange(0.01, 1.0)
-            self.dynamic_params_widgets["column_thickness"].setValue(0.1)
-            self.dynamic_params_widgets["column_thickness"].setSingleStep(0.01)
-            self.params_layout.addRow("Column Thickness:", self.dynamic_params_widgets["column_thickness"])
-            
-        elif system_type == "Diagrid":
-            # Angle
-            self.dynamic_params_widgets["diagrid_angle"] = QSlider(Qt.Horizontal)
-            self.dynamic_params_widgets["diagrid_angle"].setRange(30, 80)
-            self.dynamic_params_widgets["diagrid_angle"].setValue(45)
-            self.params_layout.addRow("Diagrid Angle:", self.dynamic_params_widgets["diagrid_angle"])
-            
-            # Module height
-            self.dynamic_params_widgets["module_height"] = QDoubleSpinBox()
-            self.dynamic_params_widgets["module_height"].setRange(0.5, 5.0)
-            self.dynamic_params_widgets["module_height"].setValue(1.0)
-            self.dynamic_params_widgets["module_height"].setSingleStep(0.1)
-            self.params_layout.addRow("Module Height:", self.dynamic_params_widgets["module_height"])
-            
-        elif system_type == "Space Frame":
-            # Node connection type
-            self.dynamic_params_widgets["node_type"] = QComboBox()
-            self.dynamic_params_widgets["node_type"].addItems(["Spherical", "Rigid", "Flexible"])
-            self.params_layout.addRow("Node Type:", self.dynamic_params_widgets["node_type"])
-            
-            # Strut diameter
-            self.dynamic_params_widgets["strut_diameter"] = QDoubleSpinBox()
-            self.dynamic_params_widgets["strut_diameter"].setRange(0.01, 0.5)
-            self.dynamic_params_widgets["strut_diameter"].setValue(0.05)
-            self.dynamic_params_widgets["strut_diameter"].setSingleStep(0.01)
-            self.params_layout.addRow("Strut Diameter:", self.dynamic_params_widgets["strut_diameter"])
-            
-        elif system_type == "Voronoi":
-            # Seed count
-            self.dynamic_params_widgets["seed_count"] = QSpinBox()
-            self.dynamic_params_widgets["seed_count"].setRange(5, 100)
-            self.dynamic_params_widgets["seed_count"].setValue(20)
-            self.params_layout.addRow("Seed Count:", self.dynamic_params_widgets["seed_count"])
-            
-            # Cell regularity
-            self.dynamic_params_widgets["cell_regularity"] = QSlider(Qt.Horizontal)
-            self.dynamic_params_widgets["cell_regularity"].setRange(0, 100)
-            self.dynamic_params_widgets["cell_regularity"].setValue(50)
-            self.params_layout.addRow("Cell Regularity:", self.dynamic_params_widgets["cell_regularity"])
-            
-        elif system_type == "Triangulated":
-            # Subdivision level
-            self.dynamic_params_widgets["subdivision"] = QSpinBox()
-            self.dynamic_params_widgets["subdivision"].setRange(1, 5)
-            self.dynamic_params_widgets["subdivision"].setValue(2)
-            self.params_layout.addRow("Subdivision Level:", self.dynamic_params_widgets["subdivision"])
-            
-            # Edge thickness
-            self.dynamic_params_widgets["edge_thickness"] = QDoubleSpinBox()
-            self.dynamic_params_widgets["edge_thickness"].setRange(0.01, 0.5)
-            self.dynamic_params_widgets["edge_thickness"].setValue(0.05)
-            self.dynamic_params_widgets["edge_thickness"].setSingleStep(0.01)
-            self.params_layout.addRow("Edge Thickness:", self.dynamic_params_widgets["edge_thickness"])
-            
-        elif system_type == "Waffle":
-            # Slot width
-            self.dynamic_params_widgets["slot_width"] = QDoubleSpinBox()
-            self.dynamic_params_widgets["slot_width"].setRange(0.01, 0.5)
-            self.dynamic_params_widgets["slot_width"].setValue(0.1)
-            self.dynamic_params_widgets["slot_width"].setSingleStep(0.01)
-            self.params_layout.addRow("Slot Width:", self.dynamic_params_widgets["slot_width"])
-            
-            # Material thickness
-            self.dynamic_params_widgets["material_thickness"] = QDoubleSpinBox()
-            self.dynamic_params_widgets["material_thickness"].setRange(0.01, 0.3)
-            self.dynamic_params_widgets["material_thickness"].setValue(0.05)
-            self.dynamic_params_widgets["material_thickness"].setSingleStep(0.01)
-            self.params_layout.addRow("Material Thickness:", self.dynamic_params_widgets["material_thickness"])
-            
-            # Direction
-            self.dynamic_params_widgets["direction"] = QComboBox()
-            self.dynamic_params_widgets["direction"].addItems(["Orthogonal", "Radial", "Contour"])
-            self.params_layout.addRow("Direction:", self.dynamic_params_widgets["direction"])
 
-    def on_face_hovered(self, face_idx):
-        """Handle face hover for highlighting during selection mode"""
-        if not self.selection_active or self.mesh is None:
+    def toggle_model_visibility(self):
+        """Toggle the visibility of the model"""
+        if not hasattr(self, 'mesh_item') or self.mesh_item is None:
             return
+            
+        self.model_visible = not self.model_visible
         
-        if face_idx == -1:  # No face being hovered
-            # Reset colors to normal or selected state
-            face_colors = np.array([[0.7, 0.7, 1.0, 0.5] for _ in range(len(self.mesh.faces))])
-            
-            # Highlight selected faces
-            for idx in self.selected_faces:
-                if idx < len(face_colors):
-                    face_colors[idx] = [0.2, 0.8, 0.2, 0.8]  # Green for selected
-            
-            self.mesh_item.setMeshData(
-                vertexes=self.mesh.vertices,
-                faces=self.mesh.faces,
-                faceColors=face_colors
-            )
+        if self.model_visible:
+            self.mesh_item.setVisible(True)
+            self.visibility_btn.setText("Hide Model")
         else:
-            # Highlight the hovered face
-            face_colors = np.array([[0.7, 0.7, 1.0, 0.5] for _ in range(len(self.mesh.faces))])
-            
-            # Highlight selected faces
-            for idx in self.selected_faces:
-                if idx < len(face_colors):
-                    face_colors[idx] = [0.2, 0.8, 0.2, 0.8]  # Green for selected
-            
-            # Highlight hovered face (unless already selected)
-            if face_idx not in self.selected_faces:
-                face_colors[face_idx] = [0.8, 0.8, 0.0, 0.8]  # Yellow for hover
-            
-            self.mesh_item.setMeshData(
-                vertexes=self.mesh.vertices,
-                faces=self.mesh.faces,
-                faceColors=face_colors
-            )
-    
-    def on_face_picked(self, face_idx):
-        """Handle face picking for selection"""
-        if not self.selection_active or self.mesh is None:
-            return
-        
-        # Toggle selection of the face
-        if face_idx in self.selected_faces:
-            self.selected_faces.remove(face_idx)
-        else:
-            self.selected_faces.append(face_idx)
-        
-        # Update face colors
-        face_colors = np.array([[0.7, 0.7, 1.0, 0.5] for _ in range(len(self.mesh.faces))])
-        
-        # Highlight selected faces
-        for idx in self.selected_faces:
-            if idx < len(face_colors):
-                face_colors[idx] = [0.2, 0.8, 0.2, 0.8]  # Green for selected
-                
-        self.mesh_item.setMeshData(
-            vertexes=self.mesh.vertices,
-            faces=self.mesh.faces,
-            faceColors=face_colors
-        )
-        
-        # Update selection status
-        self.selection_status.setText(f"Selection Mode: Active - {len(self.selected_faces)} faces selected")
-    
-    def on_faces_drag_selected(self, face_indices):
-        """Handle faces selected via drag operation"""
-        if not self.selection_active or self.mesh is None:
-            return
-        
-        # Update the selected faces list
-        for idx in face_indices:
-            if idx not in self.selected_faces:
-                self.selected_faces.append(idx)
-        
-        # Update face colors to show selection
-        face_colors = np.array([[0.7, 0.7, 1.0, 0.5] for _ in range(len(self.mesh.faces))])
-        
-        # Highlight all selected faces
-        for idx in self.selected_faces:
-            if idx < len(face_colors):
-                face_colors[idx] = [0.2, 0.8, 0.2, 0.8]  # Green for selected
-                
-        self.mesh_item.setMeshData(
-            vertexes=self.mesh.vertices,
-            faces=self.mesh.faces,
-            faceColors=face_colors
-        )
-        
-        # Update selection status
-        self.selection_status.setText(f"Selection Mode: Active - {len(self.selected_faces)} faces selected")
-    
-    def enter_selection_mode(self):
-        """Enter or exit face selection mode"""
-        self.selection_active = not self.selection_active
-        self.view3d.enableSelectionMode(self.selection_active)
-        
-        if self.selection_active:
-            self.selection_status.setText("Selection Mode: Active - Click on faces to select")
-        else:
-            self.selection_status.setText("Selection Mode: Inactive")
-    
-    def clear_selection(self):
-        """Clear all selected faces"""
-        self.selected_faces = []
-        
-        if self.mesh is not None:
-            # Reset face colors
-            face_colors = np.array([[0.7, 0.7, 1.0, 0.5] for _ in range(len(self.mesh.faces))])
-            self.mesh_item.setMeshData(
-                vertexes=self.mesh.vertices,
-                faces=self.mesh.faces,
-                faceColors=face_colors
-            )
-        
-        self.selection_status.setText("Selection Mode: Active - 0 faces selected" if self.selection_active else "Selection Mode: Inactive")
-    
-    def select_color(self):
-        """Open color dialog to select element color"""
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.element_color = [color.red(), color.green(), color.blue()]
-            self.color_btn.setStyleSheet(f"background-color: rgb({color.red()}, {color.green()}, {color.blue()})")
-    
+            self.mesh_item.setVisible(False)
+            self.visibility_btn.setText("Show Model")
+
     def apply_system(self):
-        """Apply the selected structural system to the selected faces"""
-        if not self.mesh or not self.selected_faces:
+        """Apply the selected structural system to the selected faces or geometry"""
+        # Check if we have a selection based on the current selection type
+        if not self.selected_geometry:
             QMessageBox.warning(self, "Selection Required", 
-                               "Please select faces to apply the structural system.")
+                               "Please select a geometry to apply the structural system.")
             return
             
         system_type = self.system_type.currentText()
@@ -838,362 +680,1245 @@ class StructuralSystemGenerator(QMainWindow):
         depth = self.depth_spin.value()
         color = self.element_color
         
-        # Collection for any new elements
+        # Collection for new elements
         new_elements = []
         
-        # Apply system based on type
-        if system_type == "Grid":
-            # Specific parameters for Grid system
-            column_spacing = self.dynamic_params_widgets["column_spacing"].value()
-            column_thickness = self.dynamic_params_widgets["column_thickness"].value()
+        # Apply system based on geometry selection
+        if self.selected_geometry and hasattr(self.selected_geometry['data'], 'faces'):
+            mesh = self.selected_geometry['data']
             
-            # Generate grid elements for each selected face
-            for face_idx in self.selected_faces:
-                # Get face data
-                face = self.mesh.faces[face_idx]
-                vertices = self.mesh.vertices[face]
-                
-                # Create grid on face
-                elements = self.generate_grid_system(vertices, density, depth, 
-                                                   column_spacing, column_thickness)
-                new_elements.extend(elements)
+            # Use coplanar surfaces rather than individual faces
+            if hasattr(self, 'coplanar_groups') and self.coplanar_groups:
+                # Process each coplanar surface group
+                for group in self.coplanar_groups:
+                    # Get all face vertices for this coplanar group
+                    coplanar_vertices = []
+                    for face_idx in group:
+                        if face_idx < len(mesh.faces):
+                            face = mesh.faces[face_idx]
+                            for vertex_idx in face:
+                                coplanar_vertices.append(mesh.vertices[vertex_idx])
+                    
+                    # Remove duplicates while preserving order
+                    unique_vertices = []
+                    seen = set()
+                    for vertex in coplanar_vertices:
+                        vertex_tuple = tuple(vertex)
+                        if vertex_tuple not in seen:
+                            seen.add(vertex_tuple)
+                            unique_vertices.append(vertex)
+                    
+                    # Skip if too few vertices
+                    if len(unique_vertices) < 3:
+                        continue
+                    
+                    # Convert back to numpy array
+                    vertices = np.array(unique_vertices)
+                    
+                    # Generate elements based on the selected system type for this coplanar group
+                    elements = self.generate_system_for_face(system_type, vertices, density, depth)
+                    if elements:
+                        new_elements.extend(elements)
+            else:
+                # Fallback to processing individual faces
+                for face_idx, face in enumerate(mesh.faces):
+                    vertices = mesh.vertices[face]
+                    elements = self.generate_system_for_face(system_type, vertices, density, depth)
+                    if elements:
+                        new_elements.extend(elements)
         
-        elif system_type == "Diagrid":
-            # Specific parameters for Diagrid system
-            diagrid_angle = self.dynamic_params_widgets["diagrid_angle"].value()
-            module_height = self.dynamic_params_widgets["module_height"].value()
-            
-            # Generate diagrid elements for each selected face
-            for face_idx in self.selected_faces:
-                # Get face data
-                face = self.mesh.faces[face_idx]
-                vertices = self.mesh.vertices[face]
-                
-                # Create diagrid on face
-                elements = self.generate_diagrid_system(vertices, density, depth,
-                                                      diagrid_angle, module_height)
-                new_elements.extend(elements)
-        
-        elif system_type == "Space Frame":
-            # Specific parameters for Space Frame
-            node_type = self.dynamic_params_widgets["node_type"].currentText()
-            strut_diameter = self.dynamic_params_widgets["strut_diameter"].value()
-            
-            # Generate space frame elements for each selected face
-            for face_idx in self.selected_faces:
-                # Get face data
-                face = self.mesh.faces[face_idx]
-                vertices = self.mesh.vertices[face]
-                
-                # Create space frame on face
-                elements = self.generate_space_frame(vertices, density, depth,
-                                                   node_type, strut_diameter)
-                new_elements.extend(elements)
-        
-        elif system_type == "Voronoi":
-            # Specific parameters for Voronoi
-            seed_count = self.dynamic_params_widgets["seed_count"].value()
-            cell_regularity = self.dynamic_params_widgets["cell_regularity"].value() / 100.0
-            
-            # Generate voronoi elements for each selected face
-            for face_idx in self.selected_faces:
-                # Get face data
-                face = self.mesh.faces[face_idx]
-                vertices = self.mesh.vertices[face]
-                
-                # Create voronoi on face
-                elements = self.generate_voronoi_system(vertices, depth,
-                                                      seed_count, cell_regularity)
-                new_elements.extend(elements)
-        
-        elif system_type == "Triangulated":
-            # Specific parameters for Triangulated
-            subdivision = self.dynamic_params_widgets["subdivision"].value()
-            edge_thickness = self.dynamic_params_widgets["edge_thickness"].value()
-            
-            # Generate triangulated elements for each selected face
-            for face_idx in self.selected_faces:
-                # Get face data
-                face = self.mesh.faces[face_idx]
-                vertices = self.mesh.vertices[face]
-                
-                # Create triangulated system on face
-                elements = self.generate_triangulated_system(vertices, depth,
-                                                          subdivision, edge_thickness)
-                new_elements.extend(elements)
-        
-        elif system_type == "Waffle":
-            # Specific parameters for Waffle
-            slot_width = self.dynamic_params_widgets["slot_width"].value()
-            material_thickness = self.dynamic_params_widgets["material_thickness"].value()
-            direction = self.dynamic_params_widgets["direction"].currentText()
-            
-            # Generate waffle elements for each selected face
-            for face_idx in self.selected_faces:
-                # Get face data
-                face = self.mesh.faces[face_idx]
-                vertices = self.mesh.vertices[face]
-                
-                # Create waffle system on face
-                elements = self.generate_waffle_system(vertices, depth,
-                                                     slot_width, material_thickness,
-                                                     direction)
-                new_elements.extend(elements)
-                
         # Add new elements to the scene
         for element in new_elements:
             self.view3d.addItem(element)
             
-        # Store elements for tracking
+        # Create a system object to track this specific structural system
+        system_info = {
+            'type': system_type,
+            'elements': new_elements,
+            'selection_type': "Geometry",
+            'selection': "Geometry",
+            'parameters': {
+                'density': density,
+                'depth': depth,
+                'color': color.copy(),
+                # Add any system-specific parameters
+            }
+        }
+        
+        # Store the system
+        self.structural_systems.append(system_info)
         self.structural_elements.extend(new_elements)
         
+        # Update the systems list
+        self._update_systems_list()
+        
         QMessageBox.information(self, "System Applied", 
-                               f"{system_type} system applied to {len(self.selected_faces)} faces.")
-    
-    def generate_grid_system(self, face_vertices, density, depth, column_spacing, column_thickness):
-        """Generate a grid structural system for a face"""
-        elements = []
-        
-        # Compute face normal and center
-        v0, v1, v2 = face_vertices
-        normal = np.cross(v1 - v0, v2 - v0)
-        normal = normal / np.linalg.norm(normal)
-        center = np.mean(face_vertices, axis=0)
-        
-        # Create an orthogonal basis in the face plane
-        if np.abs(normal[2]) < 0.9:
-            # If normal is not too close to z-axis, use z-axis for reference
-            ref = np.array([0, 0, 1])
-        else:
-            # Otherwise use x-axis
-            ref = np.array([1, 0, 0])
-            
-        u = np.cross(normal, ref)
-        u = u / np.linalg.norm(u)
-        v = np.cross(normal, u)
-        v = v / np.linalg.norm(v)
-        
-        # Find bounding box in the face plane
-        min_u = min_v = float('inf')
-        max_u = max_v = float('-inf')
-        
-        for vertex in face_vertices:
-            rel_pos = vertex - center
-            u_coord = np.dot(rel_pos, u)
-            v_coord = np.dot(rel_pos, v)
-            
-            min_u = min(min_u, u_coord)
-            max_u = max(max_u, u_coord)
-            min_v = min(min_v, v_coord)
-            max_v = max(max_v, v_coord)
-        
-        # Expand slightly to ensure coverage
-        margin = 0.1
-        min_u -= margin
-        max_u += margin
-        min_v -= margin
-        max_v += margin
-        
-        # Create grid lines
-        cols = max(2, int((max_u - min_u) / column_spacing))
-        rows = max(2, int((max_v - min_v) / column_spacing))
-        
-        # Adjust spacing to evenly distribute
-        u_spacing = (max_u - min_u) / (cols - 1)
-        v_spacing = (max_v - min_v) / (rows - 1)
-        
-        # Create columns (vertical lines)
-        for i in range(cols):
-            u_coord = min_u + i * u_spacing
-            
-            # Line endpoints in 3D
-            start = center + u * u_coord + v * min_v
-            end = center + u * u_coord + v * max_v
-            
-            # Create line with the specified thickness
-            line = self.create_cylinder(start, end, column_thickness, pg_color(self.element_color))
-            elements.append(line)
-        
-        # Create beams (horizontal lines)
-        for j in range(rows):
-            v_coord = min_v + j * v_spacing
-            
-            # Line endpoints in 3D
-            start = center + u * min_u + v * v_coord
-            end = center + u * max_u + v * v_coord
-            
-            # Create line with the specified thickness
-            line = self.create_cylinder(start, end, column_thickness, pg_color(self.element_color))
-            elements.append(line)
-            
-        return elements
-    
-    def generate_diagrid_system(self, face_vertices, density, depth, diagrid_angle, module_height):
-        """Generate a diagrid structural system for a face"""
-        elements = []
-        
-        # Similar approach to grid, but with diagonal elements
-        # Convert the angle from degrees to radians
-        angle_rad = np.radians(diagrid_angle)
-        
-        # Compute face normal and center
-        v0, v1, v2 = face_vertices
-        normal = np.cross(v1 - v0, v2 - v0)
-        normal = normal / np.linalg.norm(normal)
-        center = np.mean(face_vertices, axis=0)
-        
-        # Create an orthogonal basis in the face plane
-        if np.abs(normal[2]) < 0.9:
-            # If normal is not too close to z-axis, use z-axis for reference
-            ref = np.array([0, 0, 1])
-        else:
-            # Otherwise use x-axis
-            ref = np.array([1, 0, 0])
-            
-        u = np.cross(normal, ref)
-        u = u / np.linalg.norm(u)
-        v = np.cross(normal, u)
-        v = v / np.linalg.norm(v)
-        
-        # Find bounding box in the face plane
-        min_u = min_v = float('inf')
-        max_u = max_v = float('-inf')
-        
-        for vertex in face_vertices:
-            rel_pos = vertex - center
-            u_coord = np.dot(rel_pos, u)
-            v_coord = np.dot(rel_pos, v)
-            
-            min_u = min(min_u, u_coord)
-            max_u = max(max_u, u_coord)
-            min_v = min(min_v, v_coord)
-            max_v = max(max_v, v_coord)
-        
-        # Expand slightly to ensure coverage
-        margin = 0.1
-        min_u -= margin
-        max_u += margin
-        min_v -= margin
-        max_v += margin
-        
-        # Calculate module width based on angle and height
-        module_width = module_height / np.tan(angle_rad)
-        
-        # Number of modules horizontally and vertically
-        n_modules_h = max(1, int((max_u - min_u) / module_width))
-        n_modules_v = max(1, int((max_v - min_v) / module_height))
-        
-        # Adjust module dimensions to fit evenly
-        module_width = (max_u - min_u) / n_modules_h
-        module_height = (max_v - min_v) / n_modules_v
-        
-        # Thickness of the diagonals
-        diagonal_thickness = 0.05
-        
-        # Create diagonal elements
-        for i in range(n_modules_h):
-            for j in range(n_modules_v):
-                # Module corners
-                bottom_left = center + u * (min_u + i * module_width) + v * (min_v + j * module_height)
-                bottom_right = center + u * (min_u + (i+1) * module_width) + v * (min_v + j * module_height)
-                top_left = center + u * (min_u + i * module_width) + v * (min_v + (j+1) * module_height)
-                top_right = center + u * (min_u + (i+1) * module_width) + v * (min_v + (j+1) * module_height)
-                
-                # Create diagonals (X-pattern)
-                diagonal1 = self.create_cylinder(bottom_left, top_right, diagonal_thickness, pg_color(self.element_color))
-                diagonal2 = self.create_cylinder(bottom_right, top_left, diagonal_thickness, pg_color(self.element_color))
-                
-                elements.append(diagonal1)
-                elements.append(diagonal2)
-        
-        return elements
-    
-    def create_cylinder(self, start, end, radius, color):
-        """Create a cylinder between two points with given radius and color"""
-        # Calculate cylinder length
-        length = np.linalg.norm(end - start)
-        
-        # Create the cylinder mesh
-        cylinder = gl.MeshData.cylinder(rows=10, cols=10, radius=[radius, radius], length=length)
-        
-        # Calculate the orientation
-        direction = end - start
-        direction = direction / np.linalg.norm(direction)
-        
-        # Default cylinder direction in the mesh is along the y-axis
-        default_dir = np.array([0, 1, 0])
-        
-        # Calculate the rotation axis and angle
-        rotation_axis = np.cross(default_dir, direction)
-        
-        # If rotation axis has zero length (vectors are parallel or anti-parallel)
-        if np.linalg.norm(rotation_axis) < 1e-6:
-            if direction[1] < 0:  # Anti-parallel case
-                # Rotate 180 degrees around x-axis
-                rotation_axis = np.array([1, 0, 0])
-                rotation_angle = np.pi
-            else:  # Parallel case
-                # No rotation needed
-                rotation_axis = np.array([1, 0, 0])
-                rotation_angle = 0
-        else:
-            # Normalize rotation axis
-            rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
-            # Calculate rotation angle
-            rotation_angle = np.arccos(np.dot(default_dir, direction))
-        
-        # Create a GLMeshItem
-        mesh = gl.GLMeshItem(meshdata=cylinder, color=color, glOptions='translucent')
-        
-        # Create a rotation matrix
-        tr = pg.Transform3D()
-        tr.translate(start[0], start[1], start[2])
-        tr.rotate(np.degrees(rotation_angle), rotation_axis[0], rotation_axis[1], rotation_axis[2])
-        
-        # Apply the transformation
-        mesh.setTransform(tr)
-        
-        return mesh
-    
-    def export_structure(self):
-        """Export the generated structural system"""
-        # Simple implementation: export as STL
-        if not self.structural_elements:
-            QMessageBox.warning(self, "Nothing to Export", 
-                               "Please apply a structural system before exporting.")
+                               f"{system_type} system applied to selected geometry.")
+
+    def delete_system(self):
+        """Delete the selected structural system from the view"""
+        selected_items = self.systems_list.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No System Selected", 
+                               "Please select a system to delete.")
             return
+            
+        selected_idx = self.systems_list.row(selected_items[0])
         
-        # In a real app, you'd combine all meshes and export
-        file_dialog = QFileDialog()
-        file_path, _ = file_dialog.getSaveFileName(
-            self, "Export Structure", "", 
-            "STL Files (*.stl);;OBJ Files (*.obj)"
+        if selected_idx >= 0 and selected_idx < len(self.structural_systems):
+            # Get the system to delete
+            system = self.structural_systems[selected_idx]
+            
+            # Remove elements from view
+            for element in system['elements']:
+                self.view3d.removeItem(element)
+                
+                # Also remove from structural_elements list
+                if element in self.structural_elements:
+                    self.structural_elements.remove(element)
+            
+            # Remove the system from the list
+            self.structural_systems.pop(selected_idx)
+            
+            # Update the systems list
+            self._update_systems_list()
+            
+            QMessageBox.information(self, "System Deleted", 
+                                   f"{system['type']} system has been deleted.")
+
+    def clear_all_systems(self):
+        """Clear all structural systems from the view"""
+        if not self.structural_systems:
+            QMessageBox.information(self, "No Systems", 
+                                  "There are no structural systems to clear.")
+            return
+            
+        reply = QMessageBox.question(
+            self, "Confirm Deletion",
+            "Are you sure you want to delete all structural systems?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         
+        if reply == QMessageBox.Yes:
+            # Remove all elements from view
+            for system in self.structural_systems:
+                for element in system['elements']:
+                    self.view3d.removeItem(element)
+            
+            # Clear the lists
+            self.structural_systems = []
+            self.structural_elements = []
+            
+            # Update the systems list
+            self._update_systems_list()
+            
+            QMessageBox.information(self, "Systems Cleared", 
+                                   "All structural systems have been cleared.")
+
+    def clear_view(self):
+        """Clear the 3D view and reset state"""
+        self.view3d.clear()
+        
+        # Add grid back
+        grid = gl.GLGridItem()
+        grid.setSize(10, 10, 1)
+        grid.setSpacing(1, 1, 1)
+        self.view3d.addItem(grid)
+        
+        # Reset state
+        self.mesh = None
+        self.structural_elements = []
+        self.structural_systems = []  # Clear systems as well
+        self.selection_active = False
+        self.selection_status.setText("Selection Mode: Inactive")
+        self.model_visible = True
+        
+        # Clear geometry selection data
+        self.view3d.clearGeometries()
+        self.selected_geometry = None
+        
+        # Update the systems list
+        self._update_systems_list()
+
+    def _update_systems_list(self):
+        """Update the list of structural systems in the UI"""
+        self.systems_list.clear()
+        
+        for i, system in enumerate(self.structural_systems):
+            # Create descriptive text for the system
+            item_text = f"{system['type']} (on geometry)"
+            self.systems_list.addItem(item_text)
+
+    def refresh_models_list(self):
+        """Refresh the list of available models"""
+        self.models_list.clear()
+        
+        # List all model files in the models directory
+        if os.path.exists(self.models_dir):
+            # Get list of files with the right extensions
+            model_files = []
+            for file in os.listdir(self.models_dir):
+                if file.endswith(('.obj', '.stl', '.ply')):
+                    model_files.append(file)
+            
+            # Sort models alphabetically for better organization
+            model_files.sort()
+            
+            # Add models to the list with improved formatting
+            for file in model_files:
+                self.models_list.addItem(file)
+            
+            # Add style to make the list more visible
+            self.models_list.setStyleSheet("""
+                QListWidget {
+                    background-color: #f0f0f0;
+                    border: 1px solid #999;
+                    border-radius: 3px;
+                }
+                QListWidget::item {
+                    padding: 5px;
+                    border-bottom: 1px solid #ddd;
+                }
+                QListWidget::item:selected {
+                    background-color: #3498db;
+                    color: white;
+                }
+                QListWidget::item:hover {
+                    background-color: #e0e0e0;
+                }
+            """)
+            
+            # If there are no models, add an informative message
+            if len(model_files) == 0:
+                self.models_list.addItem("No models found. Upload a model to begin.")
+    
+    def upload_model(self):
+        """Upload a 3D model file"""
+        file_dialog = QFileDialog()
+        file_path, _ = file_dialog.getOpenFileName(
+            self, "Open 3D Model", "", "3D Models (*.obj *.stl *.ply)")
+        
         if file_path:
-            # For demo, show a success message
-            QMessageBox.information(self, "Export", "Structure exported successfully!")
+            # Copy the file to the models directory
+            filename = os.path.basename(file_path)
+            dest_path = os.path.join(self.models_dir, filename)
+            
+            try:
+                # Check if file already exists
+                if os.path.exists(dest_path):
+                    reply = QMessageBox.question(
+                        self, "File Exists",
+                        f"The file {filename} already exists. Overwrite?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                    )
+                    
+                    if reply == QMessageBox.No:
+                        return
+                
+                # Copy the file
+                import shutil
+                shutil.copy2(file_path, dest_path)
+                
+                # Refresh the models list
+                self.refresh_models_list()
+                
+                # Load the new model
+                self.load_model(dest_path)
+                
+                QMessageBox.information(self, "Upload Successful", 
+                                      f"Model {filename} has been uploaded.")
+            except Exception as e:
+                QMessageBox.critical(self, "Upload Failed", 
+                                    f"Failed to upload model: {str(e)}")
     
-    # Placeholders for other structural system generators
-    def generate_space_frame(self, face_vertices, density, depth, node_type, strut_diameter):
-        """Generate a space frame structural system"""
-        # Placeholder implementation
-        return []
+    def delete_model(self):
+        """Delete the selected model file"""
+        selected_items = self.models_list.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No Model Selected", 
+                               "Please select a model to delete.")
+            return
+            
+        filename = selected_items[0].text()
+        file_path = os.path.join(self.models_dir, filename)
+        
+        if os.path.exists(file_path):
+            reply = QMessageBox.question(
+                self, "Confirm Deletion",
+                f"Are you sure you want to delete {filename}?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                try:
+                    os.remove(file_path)
+                    
+                    # Refresh the models list
+                    self.refresh_models_list()
+                    
+                    # Clear view if the deleted model was loaded
+                    if self.mesh is not None:
+                        self.clear_view()
+                    
+                    QMessageBox.information(self, "Deletion Successful", 
+                                          f"Model {filename} has been deleted.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Deletion Failed", 
+                                        f"Failed to delete model: {str(e)}")
     
-    def generate_voronoi_system(self, face_vertices, depth, seed_count, cell_regularity):
-        """Generate a Voronoi structural system"""
-        # Placeholder implementation
-        return []
+    def on_model_selected(self, item):
+        """Handle selection of a model from the list"""
+        filename = item.text()
+        
+        # Skip if the item is just an informational message
+        if filename.startswith("No models found"):
+            return
+            
+        file_path = os.path.join(self.models_dir, filename)
+        
+        if os.path.exists(file_path):
+            # Update selection status in UI
+            self.selection_status.setText(f"Loading model: {filename}")
+            
+            # Clear previous selection state
+            self.view3d.clearGeometries()
+            self.selected_geometry = None
+            
+            # Load the selected model
+            self.load_model(file_path)
+            
+            # Update the button to indicate that this model can be made visible/invisible
+            self.visibility_btn.setEnabled(True)
+            self.visibility_btn.setText("Hide Model")
+            self.model_visible = True
+            
+            # Update selection status with model info
+            self.selection_status.setText(f"Loaded: {filename}")
+            
+            # Highlight the selected item in the list
+            for i in range(self.models_list.count()):
+                if self.models_list.item(i).text() == filename:
+                    self.models_list.item(i).setSelected(True)
+                else:
+                    self.models_list.item(i).setSelected(False)
     
-    def generate_triangulated_system(self, face_vertices, depth, subdivision, edge_thickness):
-        """Generate a triangulated structural system"""
-        # Placeholder implementation
-        return []
+    def enter_selection_mode(self):
+        """Enter or exit selection mode for picking geometries"""
+        # Toggle selection mode
+        self.selection_active = not self.selection_active
+        
+        # Update selection status
+        if self.selection_active:
+            self.selection_status.setText("Selection Mode: Active")
+            self.view3d.enableSelectionMode(True)
+            self.view3d.setSelectionType("Geometry")  # Always use Geometry selection type
+            
+            # Make sure model is visible with proper opacity
+            if hasattr(self, 'mesh_item') and self.mesh_item is not None and self.mesh is not None:
+                vertices = self.mesh.vertices
+                faces = self.mesh.faces
+                
+                # Create face colors with proper visibility
+                face_colors = np.array([[0.7, 0.7, 1.0, 0.4] for _ in range(len(faces))])
+                
+                self.mesh_item.setMeshData(
+                    vertexes=vertices,
+                    faces=faces,
+                    faceColors=face_colors,
+                    smooth=True,
+                    drawEdges=False
+                )
+                
+                # Re-add the geometry for selection
+                self.view3d.clearGeometries()
+                self.view3d.addGeometry(self.mesh, self.mesh_item)
+        else:
+            self.selection_status.setText("Selection Mode: Inactive")
+            self.view3d.enableSelectionMode(False)
+            
+            # Reset model to normal visibility
+            if hasattr(self, 'mesh_item') and self.mesh_item is not None and self.mesh is not None:
+                vertices = self.mesh.vertices
+                faces = self.mesh.faces
+                
+                # Reset to default colors
+                face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
+                
+                self.mesh_item.setMeshData(
+                    vertexes=vertices,
+                    faces=faces,
+                    faceColors=face_colors,
+                    smooth=True,
+                    drawEdges=False
+                )
     
-    def generate_waffle_system(self, face_vertices, depth, slot_width, material_thickness, direction):
-        """Generate a waffle structural system"""
-        # Placeholder implementation
-        return []
+    def clear_selection(self):
+        """Clear the current selection"""
+        # Clear geometry selection data
+        self.view3d.clearGeometries()
+        self.selected_geometry = None
+        
+        # Update selection status
+        self.selection_status.setText("Selection Mode: Active - No geometry selected")
+    
+    def update_system_parameters(self):
+        """Update UI parameters based on selected system type"""
+        # Clear current system-specific parameters
+        for widget in self.dynamic_params_widgets.values():
+            self.params_layout.removeRow(widget)
+        self.dynamic_params_widgets = {}
+        
+        # Get the selected system type
+        system_type = self.system_type.currentText()
+        
+        # Add system-specific parameters
+        if system_type == "Grid":
+            # Add grid spacing parameter
+            grid_spacing = QDoubleSpinBox()
+            grid_spacing.setRange(0.1, 2.0)
+            grid_spacing.setValue(0.5)
+            grid_spacing.setSingleStep(0.1)
+            self.params_layout.addRow("Grid Spacing:", grid_spacing)
+            self.dynamic_params_widgets["grid_spacing"] = grid_spacing
+            
+            # Add grid pattern parameter
+            grid_pattern = QComboBox()
+            grid_pattern.addItems(["Square", "Rectangular", "Triangular"])
+            self.params_layout.addRow("Grid Pattern:", grid_pattern)
+            self.dynamic_params_widgets["grid_pattern"] = grid_pattern
+            
+            # Add number of floors parameter
+            num_floors = QSpinBox()
+            num_floors.setRange(1, 20)
+            num_floors.setValue(1)
+            num_floors.setSingleStep(1)
+            self.params_layout.addRow("Number of Floors:", num_floors)
+            self.dynamic_params_widgets["num_floors"] = num_floors
+            
+            # Add floor height parameter
+            floor_height = QDoubleSpinBox()
+            floor_height.setRange(0.5, 5.0)
+            floor_height.setValue(3.0)
+            floor_height.setSingleStep(0.5)
+            self.params_layout.addRow("Floor Height (m):", floor_height)
+            self.dynamic_params_widgets["floor_height"] = floor_height
+            
+            # Add maximum span parameter
+            max_span = QDoubleSpinBox()
+            max_span.setRange(1.0, 10.0)
+            max_span.setValue(6.0)
+            max_span.setSingleStep(0.5)
+            self.params_layout.addRow("Maximum Span (m):", max_span)
+            self.dynamic_params_widgets["max_span"] = max_span
+            
+        elif system_type == "Diagrid":
+            # Add angle parameter
+            angle_spin = QDoubleSpinBox()
+            angle_spin.setRange(30, 80)
+            angle_spin.setValue(60)
+            angle_spin.setSingleStep(5)
+            self.params_layout.addRow("Diagrid Angle (°):", angle_spin)
+            self.dynamic_params_widgets["angle"] = angle_spin
+            
+        elif system_type == "Space Frame":
+            # Add layer parameter
+            layer_spin = QSpinBox()
+            layer_spin.setRange(1, 3)
+            layer_spin.setValue(1)
+            self.params_layout.addRow("Layers:", layer_spin)
+            self.dynamic_params_widgets["layers"] = layer_spin
+            
+        elif system_type == "Voronoi":
+            # Add point count parameter
+            point_spin = QSpinBox()
+            point_spin.setRange(5, 50)
+            point_spin.setValue(10)
+            self.params_layout.addRow("Point Count:", point_spin)
+            self.dynamic_params_widgets["points"] = point_spin
+            
+        elif system_type == "Triangulated":
+            # Add subdivision parameter
+            subdiv_spin = QSpinBox()
+            subdiv_spin.setRange(1, 5)
+            subdiv_spin.setValue(2)
+            self.params_layout.addRow("Subdivisions:", subdiv_spin)
+            self.dynamic_params_widgets["subdivisions"] = subdiv_spin
+            
+        elif system_type == "Waffle":
+            # Add spacing parameter
+            spacing_spin = QDoubleSpinBox()
+            spacing_spin.setRange(0.1, 1.0)
+            spacing_spin.setValue(0.3)
+            spacing_spin.setSingleStep(0.1)
+            self.params_layout.addRow("Spacing:", spacing_spin)
+            self.dynamic_params_widgets["spacing"] = spacing_spin
+            
+            # Add direction parameter
+            direction = QComboBox()
+            direction.addItems(["X", "Y", "Both"])
+            self.params_layout.addRow("Direction:", direction)
+            self.dynamic_params_widgets["direction"] = direction
+    
+    def select_color(self):
+        """Open color picker dialog for structural elements"""
+        color = QColorDialog.getColor()
+        
+        if color.isValid():
+            # Store the selected color
+            self.element_color = [color.red(), color.green(), color.blue()]
+            
+            # Update the button background color
+            self.color_btn.setStyleSheet(
+                f"background-color: rgb({color.red()}, {color.green()}, {color.blue()})")
+    
+    def generate_system_for_face(self, system_type, vertices, density, depth, **kwargs):
+        """Generate structural elements for a face based on the selected system type
+        
+        Args:
+            system_type: The type of structural system to generate
+            vertices: Face vertices as a numpy array
+            density: Density parameter value
+            depth: Depth parameter value
+            **kwargs: System-specific parameters
+            
+        Returns:
+            List of GL mesh items representing structural elements
+        """
+        if len(vertices) < 3:
+            return []
+            
+        # Calculate face normal and center
+        v0, v1, v2 = vertices[0], vertices[1], vertices[2]
+        edge1 = v1 - v0
+        edge2 = v2 - v0
+        normal = np.cross(edge1, edge2)
+        normal = normal / np.linalg.norm(normal) if np.linalg.norm(normal) > 0 else np.array([0, 0, 1])
+        center = np.mean(vertices, axis=0)
+        
+        # Get parameters
+        color = self.element_color
+        normalized_color = [c/255 for c in color] + [1.0]  # Add alpha=1.0
+        
+        # Create elements based on system type
+        elements = []
+        
+        if system_type == "Grid":
+            # Get system-specific parameters
+            grid_spacing = 0.5
+            max_span = 6.0
+            num_floors = 1
+            floor_height = 3.0
+            
+            if "grid_spacing" in self.dynamic_params_widgets:
+                grid_spacing = self.dynamic_params_widgets["grid_spacing"].value()
+            
+            if "max_span" in self.dynamic_params_widgets:
+                max_span = self.dynamic_params_widgets["max_span"].value()
+                
+            if "num_floors" in self.dynamic_params_widgets:
+                num_floors = self.dynamic_params_widgets["num_floors"].value()
+                
+            if "floor_height" in self.dynamic_params_widgets:
+                floor_height = self.dynamic_params_widgets["floor_height"].value()
+            
+            # Project vertices to 2D (horizontal plane)
+            vertices_2d = vertices.copy()
+            vertices_2d[:, 2] = 0  # Zero out z-component to get horizontal projection
+            
+            # Calculate the 2D bounding box of the projected vertices
+            min_x = np.min(vertices_2d[:, 0])
+            max_x = np.max(vertices_2d[:, 0])
+            min_y = np.min(vertices_2d[:, 1])
+            max_y = np.max(vertices_2d[:, 1])
+            
+            # Calculate grid dimensions based on max_span
+            width = max_x - min_x
+            height = max_y - min_y
+            
+            divisions_x = max(2, int(np.ceil(width / max_span)))
+            divisions_y = max(2, int(np.ceil(height / max_span)))
+            
+            # Create grid points
+            x_points = np.linspace(min_x, max_x, divisions_x + 1)
+            y_points = np.linspace(min_y, max_y, divisions_y + 1)
+            
+            # Generate columns and beams for all floors
+            for floor in range(num_floors):
+                # Calculate floor elevation
+                z_base = np.min(vertices[:, 2])  # Bottom of geometry
+                floor_base = z_base + floor * floor_height
+                floor_top = floor_base + floor_height
+                
+                # Create columns (vertical beams)
+                for x in x_points:
+                    for y in y_points:
+                        # Check if point is within the horizontal projection of the face
+                        if self._is_point_in_face_2d(np.array([x, y]), vertices_2d):
+                            # Create a column from floor_base to floor_top
+                            start = np.array([x, y, floor_base])
+                            end = np.array([x, y, floor_top])
+                            column = self._create_beam(start, end, depth/2, normalized_color, is_column=True)
+                            elements.append(column)
+                
+                # Create beams at the top of this floor
+                for i in range(len(x_points)):
+                    for j in range(len(y_points) - 1):
+                        x = x_points[i]
+                        y1 = y_points[j]
+                        y2 = y_points[j+1]
+                        
+                        # Create horizontal beam along y-axis if both ends are in the face
+                        if (self._is_point_in_face_2d(np.array([x, y1]), vertices_2d) and 
+                            self._is_point_in_face_2d(np.array([x, y2]), vertices_2d)):
+                            start = np.array([x, y1, floor_top])
+                            end = np.array([x, y2, floor_top])
+                            beam = self._create_beam(start, end, depth/2, normalized_color)
+                            elements.append(beam)
+                
+                for i in range(len(x_points) - 1):
+                    for j in range(len(y_points)):
+                        x1 = x_points[i]
+                        x2 = x_points[i+1]
+                        y = y_points[j]
+                        
+                        # Create horizontal beam along x-axis if both ends are in the face
+                        if (self._is_point_in_face_2d(np.array([x1, y]), vertices_2d) and 
+                            self._is_point_in_face_2d(np.array([x2, y]), vertices_2d)):
+                            start = np.array([x1, y, floor_top])
+                            end = np.array([x2, y, floor_top])
+                            beam = self._create_beam(start, end, depth/2, normalized_color)
+                            elements.append(beam)
+            
+            # If using the old implementation, return the elements here
+            if elements:
+                return elements
+                
+        # ... [rest of the function with other system types remains unchanged]
+
+    def _create_beam(self, start, end, radius, color, is_column=False):
+        """Create a cylindrical beam between two points
+        
+        If is_column is True, creates a hollow/wireframe column instead of a solid beam
+        """
+        # Calculate beam direction and length
+        direction = end - start
+        length = np.linalg.norm(direction)
+        
+        if length < 1e-6:  # Avoid zero-length beams
+            return None
+            
+        direction = direction / length
+        
+        if is_column:
+            # For columns, create a wireframe tube with lines instead of a solid cylinder
+            # Use a smaller radius for the frame elements
+            wireframe_radius = radius * 0.3
+            
+            # Create vertical line elements for the corners of a square
+            corner_points = [
+                (radius, radius), (radius, -radius),
+                (-radius, -radius), (-radius, radius)
+            ]
+            
+            # Create a compound item to hold all elements of the wireframe column
+            column = gl.GLViewWidget.GLViewWidget()
+            
+            # Create vertical lines at corners
+            for x, y in corner_points:
+                # Create a thin cylinder for each corner
+                corner_mesh = gl.MeshData.cylinder(rows=6, cols=6, radius=[wireframe_radius, wireframe_radius], length=length)
+                corner_line = gl.GLMeshItem(
+                    meshdata=corner_mesh,
+                    smooth=True,
+                    color=color,
+                    shader='shaded',
+                    glOptions='translucent'
+                )
+                
+                # Position at corner
+                corner_line.translate(x, y, -length/2)
+                column.addItem(corner_line)
+            
+            # Create horizontal connectors at top and bottom
+            for z_pos in [-length/2, length/2]:
+                for i in range(4):
+                    x1, y1 = corner_points[i]
+                    x2, y2 = corner_points[(i+1) % 4]
+                    
+                    # Calculate connector length and direction
+                    conn_start = np.array([x1, y1, z_pos])
+                    conn_end = np.array([x2, y2, z_pos])
+                    conn_dir = conn_end - conn_start
+                    conn_length = np.linalg.norm(conn_dir)
+                    
+                    if conn_length < 1e-6:
+                        continue
+                        
+                    # Create connector mesh
+                    conn_mesh = gl.MeshData.cylinder(rows=6, cols=6, 
+                                                   radius=[wireframe_radius, wireframe_radius], 
+                                                   length=conn_length)
+                    connector = gl.GLMeshItem(
+                        meshdata=conn_mesh,
+                        smooth=True,
+                        color=color,
+                        shader='shaded',
+                        glOptions='translucent'
+                    )
+                    
+                    # Position and orient connector
+                    conn_dir = conn_dir / conn_length
+                    connector.translate(0, 0, -conn_length/2)
+                    
+                    # Rotate to align with connector direction
+                    z_axis = np.array([0, 0, 1])
+                    rot_axis = np.cross(z_axis, np.array([conn_dir[0], conn_dir[1], 0]))
+                    rot_angle = np.arccos(np.dot(z_axis, np.array([0, 0, 1])))
+                    if np.linalg.norm(rot_axis) > 1e-6:
+                        connector.rotate(rot_angle * 180 / np.pi, rot_axis[0], rot_axis[1], rot_axis[2])
+                    
+                    # Rotate to horizontal
+                    connector.rotate(90, 1, 0, 0)
+                    
+                    # Move to position
+                    connector.translate(x1, y1, z_pos)
+                    column.addItem(connector)
+            
+            # Now apply the overall transformation to the compound item
+            # Calculate rotation to align with direction
+            z_axis = np.array([0, 0, 1])
+            rotation_axis = np.cross(z_axis, direction)
+            
+            if np.linalg.norm(rotation_axis) > 1e-6:
+                rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
+                angle = np.arccos(np.dot(z_axis, direction))
+                
+                # Apply rotation using direct rotate method
+                column.rotate(angle * 180 / np.pi, rotation_axis[0], rotation_axis[1], rotation_axis[2])
+            
+            # Translate to the final position
+            column.translate(start[0], start[1], start[2])
+            
+            return column
+        else:
+            # For beams, create a regular solid cylinder
+            mesh = gl.MeshData.cylinder(rows=10, cols=10, radius=[radius, radius], length=length)
+            
+            # Create mesh item
+            beam = gl.GLMeshItem(
+                meshdata=mesh,
+                smooth=True,
+                color=color,
+                shader='shaded',
+                glOptions='opaque'
+            )
+            
+            # Position and orient the beam:
+            # First, place the beam with one end at the origin
+            beam.translate(0, 0, -length/2)
+            
+            # Calculate rotation to align with direction
+            # Default cylinder is along z-axis
+            z_axis = np.array([0, 0, 1])
+            rotation_axis = np.cross(z_axis, direction)
+            
+            if np.linalg.norm(rotation_axis) > 1e-6:
+                rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
+                angle = np.arccos(np.dot(z_axis, direction))
+                
+                # Apply rotation using separate rotate methods
+                beam.rotate(angle * 180 / np.pi, rotation_axis[0], rotation_axis[1], rotation_axis[2])
+            
+            # Translate to the final position
+            beam.translate(start[0], start[1], start[2])
+            
+            return beam
+
+    def _create_waffle_beam(self, start, end, normal, depth, color):
+        """Create a waffle-style beam (rectangular profile)"""
+        # Calculate beam direction and length
+        direction = end - start
+        length = np.linalg.norm(direction)
+        
+        if length < 1e-6:  # Avoid zero-length beams
+            return None
+            
+        direction = direction / length
+        
+        # Define beam dimensions
+        width = depth / 4
+        height = depth
+        
+        # Create vertices for a box mesh
+        verts = np.array([
+            [-width/2, -height/2, 0],
+            [width/2, -height/2, 0],
+            [width/2, height/2, 0],
+            [-width/2, height/2, 0],
+            [-width/2, -height/2, length],
+            [width/2, -height/2, length],
+            [width/2, height/2, length],
+            [-width/2, height/2, length]
+        ])
+        
+        # Define faces
+        faces = np.array([
+            [0, 1, 2], [0, 2, 3],  # Front face
+            [4, 6, 5], [4, 7, 6],  # Back face
+            [0, 4, 5], [0, 5, 1],  # Bottom face
+            [1, 5, 6], [1, 6, 2],  # Right face
+            [2, 6, 7], [2, 7, 3],  # Top face
+            [3, 7, 4], [3, 4, 0]   # Left face
+        ])
+        
+        # Create mesh data
+        meshdata = gl.MeshData(vertexes=verts, faces=faces)
+        
+        # Create mesh item
+        beam = gl.GLMeshItem(
+            meshdata=meshdata,
+            smooth=False,
+            color=color,
+            shader='shaded',
+            glOptions='opaque'
+        )
+        
+        # Position and orient the beam
+        # First align with direction axis
+        z_axis = np.array([0, 0, 1])
+        rotation_axis = np.cross(z_axis, direction)
+        
+        if np.linalg.norm(rotation_axis) > 1e-6:
+            rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
+            angle = np.arccos(np.dot(z_axis, direction))
+            
+            # Apply rotation using direct rotate method instead of matrix
+            beam.rotate(angle * 180 / np.pi, rotation_axis[0], rotation_axis[1], rotation_axis[2])
+            
+        # Additional rotation to align height with the normal vector
+        # This makes the beam stand perpendicular to the face
+        right_vec = np.cross(direction, normal)
+        if np.linalg.norm(right_vec) > 1e-6:
+            right_vec = right_vec / np.linalg.norm(right_vec)
+            up_vec = np.cross(right_vec, direction)
+            if np.linalg.norm(up_vec) > 1e-6:
+                up_vec = up_vec / np.linalg.norm(up_vec)
+                
+                # Calculate rotation to align y-axis with up_vec
+                y_axis = np.array([0, 1, 0])
+                rot_axis = np.cross(y_axis, up_vec)
+                
+                if np.linalg.norm(rot_axis) > 1e-6:
+                    rot_axis = rot_axis / np.linalg.norm(rot_axis)
+                    angle = np.arccos(np.dot(y_axis, up_vec))
+                    
+                    # Apply rotation using direct rotate method
+                    beam.rotate(angle * 180 / np.pi, rot_axis[0], rot_axis[1], rot_axis[2])
+        
+        # Translate to the final position
+        beam.translate(start[0], start[1], start[2])
+        
+        return beam
+    
+    def _is_point_in_face(self, point, face_vertices):
+        """Check if a point is inside a 3D face"""
+        if len(face_vertices) < 3:
+            return False
+            
+        # Calculate face normal
+        v0, v1, v2 = face_vertices[0], face_vertices[1], face_vertices[2]
+        normal = np.cross(v1 - v0, v2 - v0)
+        
+        if np.linalg.norm(normal) < 1e-6:
+            return False
+            
+        normal = normal / np.linalg.norm(normal)
+        
+        # Project point and face to 2D
+        # Choose a coordinate system in the face plane
+        basis1 = (v1 - v0) / np.linalg.norm(v1 - v0)
+        basis2 = np.cross(normal, basis1)
+        
+        # Project face vertices to 2D
+        face_2d = []
+        for v in face_vertices:
+            v_rel = v - v0
+            x = np.dot(v_rel, basis1)
+            y = np.dot(v_rel, basis2)
+            face_2d.append(np.array([x, y]))
+            
+        # Project point to 2D
+        p_rel = point - v0
+        p_2d = np.array([np.dot(p_rel, basis1), np.dot(p_rel, basis2)])
+        
+        # Check if point is in the 2D polygon
+        return self._is_point_in_polygon_2d(p_2d, face_2d)
+    
+    def _is_point_in_polygon_2d(self, point, polygon):
+        """Check if a 2D point is inside a 2D polygon using ray casting algorithm"""
+        if len(polygon) < 3:
+            return False
+            
+        # Ray casting algorithm
+        inside = False
+        x, y = point
+        
+        for i in range(len(polygon)):
+            j = (i + 1) % len(polygon)
+            xi, yi = polygon[i]
+            xj, yj = polygon[j]
+            
+            # Check if ray intersects segment
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+                inside = not inside
+                
+        return inside
+    
+    def _is_line_intersecting_face(self, start, end, face_vertices):
+        """Check if a line segment intersects with a face"""
+        if len(face_vertices) < 3:
+            return False
+        
+        # Calculate face normal
+        v0, v1, v2 = face_vertices[0], face_vertices[1], face_vertices[2]
+        normal = np.cross(v1 - v0, v2 - v0)
+        
+        if np.linalg.norm(normal) < 1e-6:
+            return False
+            
+        normal = normal / np.linalg.norm(normal)
+        
+        # Calculate intersection point with the face plane
+        direction = end - start
+        t = np.dot(v0 - start, normal) / np.dot(direction, normal)
+        
+        # Check if intersection point is within the segment
+        if t < 0 or t > 1:
+            return False
+            
+        # Calculate intersection point
+        intersection = start + t * direction
+        
+        # Check if intersection point is inside the face
+        return self._is_point_in_face(intersection, face_vertices)
+    
+    def _line_polygon_intersections_3d(self, start, end, polygon_vertices):
+        """Find all intersection points between a line and a 3D polygon"""
+        if len(polygon_vertices) < 3:
+            return []
+            
+        # Calculate polygon normal
+        v0, v1, v2 = polygon_vertices[0], polygon_vertices[1], polygon_vertices[2]
+        normal = np.cross(v1 - v0, v2 - v0)
+        
+        if np.linalg.norm(normal) < 1e-6:
+            return []
+            
+        normal = normal / np.linalg.norm(normal)
+        
+        # Project to 2D coordinates in the polygon plane
+        basis1 = (v1 - v0) / np.linalg.norm(v1 - v0)
+        basis2 = np.cross(normal, basis1)
+        
+        # Project polygon vertices
+        polygon_2d = []
+        for v in polygon_vertices:
+            v_rel = v - v0
+            x = np.dot(v_rel, basis1)
+            y = np.dot(v_rel, basis2)
+            polygon_2d.append(np.array([x, y]))
+        
+        # Project line to plane
+        direction = end - start
+        
+        # If line is parallel to plane, no intersections
+        if abs(np.dot(direction, normal)) < 1e-6:
+            return []
+            
+        # Calculate intersection with the plane
+        t_plane = np.dot(v0 - start, normal) / np.dot(direction, normal)
+        
+        if t_plane < 0 or t_plane > 1:
+            # Line segment doesn't intersect the plane
+            return []
+            
+        plane_intersection = start + t_plane * direction
+        
+        # Check if intersection is inside polygon
+        if self._is_point_in_face(plane_intersection, polygon_vertices):
+            return [plane_intersection]
+            
+        # Generate additional points along the line to handle edge intersections
+        intersections = []
+        
+        # Check intersections with polygon edges
+        for i in range(len(polygon_vertices)):
+            j = (i + 1) % len(polygon_vertices)
+            edge_start = polygon_vertices[i]
+            edge_end = polygon_vertices[j]
+            
+            # Check for intersection between line and edge
+            intersection = self._line_line_intersection_3d(start, end, edge_start, edge_end)
+            if intersection is not None:
+                intersections.append(intersection)
+        
+        return intersections
+    
+    def _line_line_intersection_3d(self, line1_start, line1_end, line2_start, line2_end):
+        """Find intersection between two 3D line segments if it exists"""
+        # Convert to parametric form
+        p1, p2 = line1_start, line1_end
+        p3, p4 = line2_start, line2_end
+        
+        v1 = p2 - p1
+        v2 = p4 - p3
+        
+        # Check if lines are parallel
+        cross_v1v2 = np.cross(v1, v2)
+        if np.linalg.norm(cross_v1v2) < 1e-6:
+            return None
+            
+        # Calculate parameters for closest points
+        p13 = p1 - p3
+        a = np.dot(v1, v1)
+        b = np.dot(v1, v2)
+        c = np.dot(v2, v2)
+        d = np.dot(v1, p13)
+        e = np.dot(v2, p13)
+        
+        denominator = a*c - b*b
+        if abs(denominator) < 1e-6:
+            return None
+            
+        t1 = (b*e - c*d) / denominator
+        t2 = (a*e - b*d) / denominator
+        
+        # Check if intersection is within both segments
+        if t1 < 0 or t1 > 1 or t2 < 0 or t2 > 1:
+            return None
+            
+        # Calculate closest points
+        p5 = p1 + t1 * v1
+        p6 = p3 + t2 * v2
+        
+        # Check if points are close enough to consider them intersecting
+        if np.linalg.norm(p5 - p6) < 1e-6:
+            return p5
+            
+        return None
+    
+    def export_structure(self):
+        """Export the structural system to a 3D file"""
+        if not self.structural_systems:
+            QMessageBox.warning(self, "No Systems", 
+                               "There are no structural systems to export.")
+            return
+            
+        # Select save location
+        file_dialog = QFileDialog()
+        file_path, _ = file_dialog.getSaveFileName(
+            self, "Export Structure", "", "OBJ Files (*.obj);;STL Files (*.stl)")
+            
+        if not file_path:
+            return
+            
+        try:
+            # Create a new mesh combining all structural elements
+            vertices = []
+            faces = []
+            vertex_offset = 0
+            
+            # Combine all elements
+            for system in self.structural_systems:
+                for element in system['elements']:
+                    # Get mesh data
+                    if hasattr(element, 'meshdata'):
+                        md = element.meshdata
+                        verts = md.vertexes()
+                        element_faces = md.faces()
+                        
+                        if verts is not None and element_faces is not None:
+                            # Apply element transformation
+                            transform = element.transform()
+                            transformed_verts = []
+                            
+                            for v in verts:
+                                tv = transform.map(pg.Vector3D(v[0], v[1], v[2]))
+                                transformed_verts.append([tv.x(), tv.y(), tv.z()])
+                            
+                            # Add to combined mesh
+                            vertices.extend(transformed_verts)
+                            
+                            # Adjust face indices
+                            adjusted_faces = element_faces + vertex_offset
+                            faces.extend(adjusted_faces)
+                            
+                            # Update offset
+                            vertex_offset += len(transformed_verts)
+            
+            # Create trimesh object
+            if vertices and faces:
+                export_mesh = trimesh.Trimesh(vertices=np.array(vertices), faces=np.array(faces))
+                
+                # Export to file
+                export_mesh.export(file_path)
+                
+                QMessageBox.information(self, "Export Successful", 
+                                       f"Structure exported to {file_path}")
+            else:
+                QMessageBox.warning(self, "Export Failed", 
+                                   "Failed to create mesh from structural elements.")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", 
+                               f"Failed to export structure: {str(e)}")
+
+    def on_geometry_selected(self, geometry):
+        """Handle selection of a geometry from the 3D view"""
+        # Store the selected geometry
+        self.selected_geometry = geometry
+        
+        # Update the selection status
+        self.selection_status.setText("Geometry selected - Ready to apply structural system")
+        
+        # First reset all geometries to default appearance
+        for i, geom in enumerate(self.view3d.geometries):
+            if 'mesh_item' in geom and geom['mesh_item'] is not None and 'data' in geom:
+                mesh = geom['data']
+                if hasattr(mesh, 'faces'):
+                    vertices = mesh.vertices
+                    faces = mesh.faces
+                    
+                    # Default semi-transparent blue for non-selected geometries
+                    face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
+                    
+                    geom['mesh_item'].setMeshData(
+                        vertexes=vertices,
+                        faces=faces,
+                        faceColors=face_colors,
+                        smooth=True,
+                        drawEdges=False
+                    )
+        
+        # Now highlight the selected geometry with a vivid green color
+        if 'mesh_item' in geometry and geometry['mesh_item'] is not None:
+            # Set selection color (bright green) with higher opacity for better visibility
+            if 'data' in geometry and hasattr(geometry['data'], 'faces'):
+                mesh = geometry['data']
+                vertices = mesh.vertices
+                faces = mesh.faces
+                
+                # Create face colors that are highly visible - bright green with opacity
+                face_colors = np.array([[0.2, 0.9, 0.3, 0.7] for _ in range(len(faces))])
+                
+                # Create edge colors for wireframe highlight (bright green)
+                edge_colors = np.array([[0.4, 1.0, 0.4, 0.9] for _ in range(len(faces)*3)])
+                
+                geometry['mesh_item'].setMeshData(
+                    vertexes=vertices,
+                    faces=faces,
+                    faceColors=face_colors,
+                    edgeColors=edge_colors,  # Set edge colors directly here
+                    smooth=True,
+                    drawEdges=True  # Show edges for better visibility of the selected model
+                )
+                
+        # Update visibility button text to reflect that a model is selected
+        self.visibility_btn.setText("Hide Selected Model")
+        self.visibility_btn.setEnabled(True)
+
+    def find_coplanar_surfaces(self, mesh):
+        """
+        Find and group coplanar faces in the mesh
+        Returns a list of lists, where each inner list contains indices of coplanar faces
+        """
+        if not hasattr(mesh, 'faces') or not hasattr(mesh, 'face_normals'):
+            # Calculate face normals if not present
+            if not hasattr(mesh, 'face_normals'):
+                mesh._cache.clear()
+                mesh.face_normals  # This will compute face normals
+                
+        face_normals = mesh.face_normals
+        face_count = len(mesh.faces)
+        
+        # Dictionary to store the groups. Key: group_id, Value: list of face indices
+        coplanar_groups = {}
+        group_id = 0
+        processed = set()
+        
+        # Threshold for determining if normals are parallel (dot product close to 1 or -1)
+        normal_threshold = 0.999
+        
+        # Threshold for determining if faces are coplanar (distance from plane)
+        distance_threshold = 0.001
+        
+        for face_idx in range(face_count):
+            if face_idx in processed:
+                continue
+                
+            # Start a new group with this face
+            current_group = [face_idx]
+            processed.add(face_idx)
+            
+            # Get face normal and a point on the face for plane equation
+            current_normal = face_normals[face_idx]
+            face_vertices = mesh.vertices[mesh.faces[face_idx]]
+            point_on_plane = np.mean(face_vertices, axis=0)
+            
+            # Find all other faces with parallel normals
+            for other_idx in range(face_count):
+                if other_idx in processed:
+                    continue
+                    
+                # Check if normals are parallel
+                other_normal = face_normals[other_idx]
+                dot_product = np.abs(np.dot(current_normal, other_normal))
+                
+                if dot_product > normal_threshold:
+                    # Check if the faces are coplanar
+                    other_vertices = mesh.vertices[mesh.faces[other_idx]]
+                    other_centroid = np.mean(other_vertices, axis=0)
+                    
+                    # Distance from point to plane
+                    distance = np.abs(np.dot(other_centroid - point_on_plane, current_normal))
+                    
+                    if distance < distance_threshold:
+                        current_group.append(other_idx)
+                        processed.add(other_idx)
+            
+            coplanar_groups[group_id] = current_group
+            group_id += 1
+            
+        # Convert to list of lists for easier use
+        return list(coplanar_groups.values())
+
+    def _is_point_in_face_2d(self, point, vertices_2d):
+        """Check if a 2D point is inside the 2D projection of a face
+        
+        Args:
+            point: 2D point (x, y) as numpy array
+            vertices_2d: List of 2D vertices representing the face projection
+            
+        Returns:
+            Boolean indicating if the point is inside the face projection
+        """
+        if len(vertices_2d) < 3:
+            return False
+            
+        # Ray casting algorithm for 2D polygon
+        inside = False
+        x, y = point[0], point[1]
+        
+        for i in range(len(vertices_2d)):
+            j = (i + 1) % len(vertices_2d)
+            xi, yi = vertices_2d[i][0], vertices_2d[i][1]
+            xj, yj = vertices_2d[j][0], vertices_2d[j][1]
+            
+            # Check if ray intersects segment
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+                inside = not inside
+                
+        return inside
 
 def pg_color(color, alpha=1.0):
     """Convert a color array to the format expected by pyqtgraph"""
@@ -1207,4 +1932,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-`
