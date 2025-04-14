@@ -1,0 +1,368 @@
+/* ModelViewer.css */
+:root {
+  --primary-color: #3498db;
+  --primary-light: rgba(52, 152, 219, 0.1);
+  --primary-dark: #2980b9;
+  --secondary-color: #2ecc71;
+  --secondary-dark: #27ae60;
+  --danger-color: #e74c3c;
+  --danger-dark: #c0392b;
+  --dark-color: #2c3e50;
+  --dark-accent: #0a192f;
+  --light-color: #ecf0f1;
+  --border-radius: 8px;
+  --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --transition: all 0.3s ease;
+}
+
+.model-viewer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background-color: var(--dark-accent);
+}
+
+.model-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 30px;
+  background: linear-gradient(90deg, #0a192f 0%, #213350 100%);
+  color: white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+}
+
+.model-info {
+  text-align: center;
+  flex-grow: 1;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.model-info h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.model-info p {
+  margin: 5px 0 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.back-button, .delete-model-button {
+  background: transparent;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 50px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: var(--transition);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}
+
+.back-button {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.back-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.2);
+  z-index: -1;
+  transition: width 0.3s ease;
+}
+
+.back-button:hover {
+  transform: translateY(-2px);
+}
+
+.back-button:hover::before {
+  width: 100%;
+}
+
+.delete-model-button {
+  background-color: var(--danger-color);
+  box-shadow: 0 2px 5px rgba(231, 76, 60, 0.3);
+}
+
+.delete-model-button:hover {
+  background-color: var(--danger-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(231, 76, 60, 0.4);
+}
+
+.model-viewer-content {
+  flex-grow: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Scene grid enhancer */
+.scene-grid {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  z-index: 10;
+}
+
+/* Loading animation */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(10, 25, 47, 0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.loading-container {
+  text-align: center;
+  color: white;
+}
+
+.loader {
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 5px solid var(--primary-color);
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 20px;
+  animation: spin 1s linear infinite;
+  box-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 1.2rem;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+/* Error message */
+.error-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(231, 76, 60, 0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  animation: fadeIn 0.3s ease;
+}
+
+.error-container {
+  background-color: white;
+  padding: 40px;
+  border-radius: var(--border-radius);
+  text-align: center;
+  max-width: 80%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  animation: scaleIn 0.3s ease-out;
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.error-icon {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  color: var(--danger-color);
+}
+
+.error-text {
+  font-size: 1.1rem;
+  color: var(--dark-color);
+  line-height: 1.5;
+}
+
+/* Controls hint bar */
+.model-viewer-controls {
+  background-color: rgba(10, 25, 47, 0.8);
+  color: white;
+  padding: 12px 24px;
+  text-align: center;
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+  opacity: 0.7;
+  transition: all 0.3s ease;
+  z-index: 50;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.model-viewer-controls:hover {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-5px);
+}
+
+.control-hint {
+  display: flex;
+  gap: 25px;
+  justify-content: center;
+}
+
+.hint-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s ease;
+}
+
+.hint-item:hover {
+  transform: scale(1.05);
+}
+
+.hint-icon {
+  font-size: 1.2rem;
+}
+
+.hint-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Camera position indicators */
+.camera-positions {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 50;
+}
+
+.camera-button {
+  background-color: rgba(10, 25, 47, 0.7);
+  color: white;
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.camera-button:hover {
+  background-color: var(--primary-color);
+  transform: scale(1.1);
+}
+
+/* Animation for elements appearance */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Make the viewer responsive */
+@media (max-width: 768px) {
+  .model-viewer-header {
+    flex-direction: column;
+    padding: 15px;
+    gap: 10px;
+  }
+
+  .model-info {
+    order: -1;
+  }
+  
+  .control-hint {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .model-viewer-controls {
+    width: 80%;
+    padding: 15px;
+  }
+  
+  .camera-positions {
+    top: auto;
+    right: auto;
+    bottom: 80px;
+    left: 20px;
+    flex-direction: row;
+  }
+}
+
+/* Context menu for model manipulation */
+.context-menu {
+  position: absolute;
+  background-color: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  padding: 10px 0;
+  min-width: 150px;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.context-menu-item {
+  padding: 8px 15px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--dark-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-menu-item:hover {
+  background-color: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: #eee;
+  margin: 5px 0;
+}
