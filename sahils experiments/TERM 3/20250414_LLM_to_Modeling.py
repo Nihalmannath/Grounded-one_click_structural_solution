@@ -304,33 +304,29 @@ class StructuralSystemGenerator(QMainWindow):
         models_group.setLayout(models_layout)
         model_layout.addWidget(models_group)
         
-        # Selection group - modified to only have geometry selection
-        selection_group = QGroupBox("Selection")
-        selection_layout = QVBoxLayout()
+        # Geometries group - replaces the selection group
+        geometries_group = QGroupBox("Geometries")
+        geometries_layout = QVBoxLayout()
         
-        # Remove selection type dropdown, always use Geometry
-        select_btn = QPushButton("Enter Selection Mode")
-        select_btn.clicked.connect(self.enter_selection_mode)
-        selection_layout.addWidget(select_btn)
-        
-        # Update hover hint for geometry selection
-        self.hover_hint = QLabel("Hover over geometry to highlight it for selection")
-        self.hover_hint.setStyleSheet("color: blue;")
-        selection_layout.addWidget(self.hover_hint)
+        geometries_layout.addWidget(QLabel("Available Geometries:"))
+        self.geometries_list = QListWidget()
+        self.geometries_list.itemClicked.connect(self.on_geometry_list_selected)
+        geometries_layout.addWidget(self.geometries_list)
         
         # Selection status label
-        self.selection_status = QLabel("Selection Mode: Inactive")
-        selection_layout.addWidget(self.selection_status)
+        self.selection_status = QLabel("No geometry selected")
+        geometries_layout.addWidget(self.selection_status)
         
-        clear_selection_btn = QPushButton("Clear Selection")
-        clear_selection_btn.clicked.connect(self.clear_selection)
-        selection_layout.addWidget(clear_selection_btn)
+        # Refresh geometries button
+        refresh_geoms_btn = QPushButton("Refresh Geometries")
+        refresh_geoms_btn.clicked.connect(self.refresh_geometries_list)
+        geometries_layout.addWidget(refresh_geoms_btn)
         
-        selection_group.setLayout(selection_layout)
-        model_layout.addWidget(selection_group)
+        geometries_group.setLayout(geometries_layout)
+        model_layout.addWidget(geometries_group)
         
         # Add model tab
-        tabs.addTab(model_tab, "Model & Selection")
+        tabs.addTab(model_tab, "Model & Geometries")
         
         # Tab 2: Structural Systems
         systems_tab = QWidget()
@@ -468,72 +464,125 @@ class StructuralSystemGenerator(QMainWindow):
     def load_model(self, file_path):
         """Load a 3D model from file and display it in the 3D view"""
         try:
-            # Clear previous models from view
-            for item in self.view3d.items:
-                if isinstance(item, gl.GLMeshItem) and hasattr(item, 'user_data') and item.user_data.get('type') == 'model':
-                    self.view3d.removeItem(item)
-            
             # Load the mesh using trimesh
             mesh = trimesh.load(file_path)
-            
-            # Get the bounds of the mesh to calculate both height and center
-            bounds = mesh.bounds
-            min_bounds, max_bounds = bounds
-            
-            # Calculate center of the mesh (in all dimensions)
-            center = (min_bounds + max_bounds) / 2.0
-            
-            # Create a transformation matrix to:
-            # 1. Center the model at origin (x=0, y=0)
-            # 2. Place the bottom of the model on the grid (z=0)
-            translation = np.eye(4)
-            translation[0, 3] = -center[0]  # Center the model in x
-            translation[1, 3] = -center[1]  # Center the model in y
-            translation[2, 3] = -min_bounds[2]  # Move the bottom of the model to z=0 (grid level)
-            
-            # Apply the transformation
-            mesh.apply_transform(translation)
-            
-            # Create GL mesh for display
-            vertices = mesh.vertices
-            faces = mesh.faces
-            
-            # Default color: semi-transparent blue
-            face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
-            
-            # Create the mesh item
-            mesh_item = gl.GLMeshItem(
-                vertexes=vertices,
-                faces=faces,
-                faceColors=face_colors,
-                smooth=True,
-                drawEdges=False
-            )
-            mesh_item.user_data = {'type': 'model', 'path': file_path}
-            
-            # Add the mesh to the view
-            self.view3d.addItem(mesh_item)
-            
-            # Add to geometries for selection
-            self.view3d.addGeometry({'data': mesh}, mesh_item)
-            
-            # Store the mesh for later use
-            self.mesh = mesh
-            
-            # Reset the camera to frame the model
-            self.view3d.setCameraPosition(distance=max(mesh.extents)*2)
-            
-            # Print some useful debug info
-            print(f"Model loaded and centered: {os.path.basename(file_path)}")
-            print(f"Original bounds: {bounds}")
-            print(f"Original center: {center}")
-            print(f"New bounds: {mesh.bounds}")
-            
-            return True
+            filename = os.path.basename(file_path)
+
+            # Check if this is a multi-geometry file
+            if hasattr(mesh, 'geometry') and len(mesh.geometry) > 0:
+                # This is a scene with multiple geometries
+                print(f"Detected multi-geometry file with {len(mesh.geometry)} geometries")
+                
+                # Process each geometry separately
+                for i, (geom_name, geometry) in enumerate(mesh.geometry.items()):
+                    # Set metadata
+                    geometry.metadata = {
+                        'name': f"{filename} - {geom_name}",
+                        'path': file_path,
+                        'index': i
+                    }
+                    
+                    # Center and place on grid
+                    bounds = geometry.bounds
+                    min_bounds, max_bounds = bounds
+                    center = (min_bounds + max_bounds) / 2.0
+                    
+                    translation = np.eye(4)
+                    translation[0, 3] = -center[0]
+                    translation[1, 3] = -center[1]
+                    translation[2, 3] = -min_bounds[2]
+                    
+                    geometry.apply_transform(translation)
+                    
+                    # Create GL mesh
+                    vertices = geometry.vertices
+                    faces = geometry.faces
+                    face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
+                    
+                    mesh_item = gl.GLMeshItem(
+                        vertexes=vertices,
+                        faces=faces,
+                        faceColors=face_colors,
+                        smooth=True,
+                        drawEdges=False
+                    )
+                    mesh_item.user_data = {'type': 'model', 'path': file_path, 'name': geometry.metadata['name']}
+                    
+                    # Add to view
+                    self.view3d.addItem(mesh_item)
+                    self.view3d.addGeometry(geometry, mesh_item)
+                    self.structural_elements.append(geometry)
+                
+                # Reset camera
+                self.view3d.setCameraPosition(distance=10)
+                
+                # Refresh the geometries list
+                self.refresh_geometries_list()
+                
+                return True
+            else:
+                # Single geometry file
+                # Set metadata
+                mesh.metadata = {
+                    'name': filename,
+                    'path': file_path,
+                    'index': 0
+                }
+                
+                # Get the bounds of the mesh to calculate both height and center
+                bounds = mesh.bounds
+                min_bounds, max_bounds = bounds
+
+                # Calculate center of the mesh (in all dimensions)
+                center = (min_bounds + max_bounds) / 2.0
+
+                # Create a transformation matrix to center and place on grid
+                translation = np.eye(4)
+                translation[0, 3] = -center[0]  # Center the model in x
+                translation[1, 3] = -center[1]  # Center the model in y
+                translation[2, 3] = -min_bounds[2]  # Move the bottom of the model to z=0 (grid level)
+
+                # Apply the transformation
+                mesh.apply_transform(translation)
+
+                # Create GL mesh for display
+                vertices = mesh.vertices
+                faces = mesh.faces
+                face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
+
+                # Create the mesh item
+                mesh_item = gl.GLMeshItem(
+                    vertexes=vertices,
+                    faces=faces,
+                    faceColors=face_colors,
+                    smooth=True,
+                    drawEdges=False
+                )
+                mesh_item.user_data = {'type': 'model', 'path': file_path, 'name': mesh.metadata['name']}
+
+                # Add the mesh to the view
+                self.view3d.addItem(mesh_item)
+                self.view3d.addGeometry(mesh, mesh_item)
+                self.structural_elements.append(mesh)
+
+                # Reset the camera to frame the model
+                self.view3d.setCameraPosition(distance=max(mesh.extents)*2)
+
+                # Refresh the geometries list
+                self.refresh_geometries_list()
+
+                # Print some useful debug info
+                print(f"Model loaded and centered: {os.path.basename(file_path)}")
+                print(f"Original bounds: {bounds}")
+                print(f"Original center: {center}")
+                print(f"New bounds: {mesh.bounds}")
+
+                return True
+                
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load model: {str(e)}")
             return False
-    
+
     def delete_model(self):
         """Delete the selected model file"""
         selected_items = self.models_list.selectedItems()
@@ -610,55 +659,39 @@ class StructuralSystemGenerator(QMainWindow):
         """Handle selection of a geometry from the 3D view"""
         # Store the selected geometry
         self.selected_geometry = geometry
-        
+
         # Update the selection status
         self.selection_status.setText("Geometry selected - Ready to apply structural system")
-        
-        # First reset all geometries to default appearance
-        for i, geom in enumerate(self.view3d.geometries):
-            if 'mesh_item' in geom and geom['mesh_item'] is not None and 'data' in geom:
-                mesh = geom['data']
-                if hasattr(mesh, 'faces'):
-                    vertices = mesh.vertices
-                    faces = mesh.faces
-                    
-                    # Default semi-transparent blue for non-selected geometries
-                    face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
-                    
-                    geom['mesh_item'].setMeshData(
-                        vertexes=vertices,
-                        faces=faces,
-                        faceColors=face_colors,
-                        smooth=True,
-                        drawEdges=False
-                    )
-        
-        # Now highlight the selected geometry with a vivid green color
-        if geometry is not None and 'mesh_item' in geometry and geometry['mesh_item'] is not None:
-            # Set selection color (bright green) with higher opacity for better visibility
-            if 'data' in geometry and hasattr(geometry['data'], 'faces'):
-                mesh = geometry['data']
-                vertices = mesh.vertices
-                faces = mesh.faces
-                
-                # Create face colors that are highly visible - bright green with opacity
-                face_colors = np.array([[0.2, 0.9, 0.3, 0.7] for _ in range(len(faces))])
-                
-                # Create edge colors for wireframe highlight (bright green)
-                edge_colors = np.array([[0.4, 1.0, 0.4, 0.9] for _ in range(len(faces)*3)])
-                
-                geometry['mesh_item'].setMeshData(
-                    vertexes=vertices,
-                    faces=faces,
-                    faceColors=face_colors,
-                    edgeColors=edge_colors,
-                    smooth=True,
-                    drawEdges=True  # Show edges for better visibility of the selected model
-                )
-                
-        # Update visibility button text to reflect that a model is selected
-        self.visibility_btn.setText("Hide Selected Model")
-        self.visibility_btn.setEnabled(True)
+
+        # Reset all geometries to default appearance
+        for geom in self.view3d.geometries:
+            if geom['mesh_item'] is not None:
+                mesh_item = geom['mesh_item']
+                mesh_item.setColor((0.7, 0.7, 1.0, 0.2))  # Default semi-transparent blue
+
+        # Highlight the selected geometry
+        if geometry is not None and geometry['mesh_item'] is not None:
+            mesh_item = geometry['mesh_item']
+            mesh_item.setColor((1.0, 0.5, 0.0, 0.7))  # Bright orange for selection
+
+        # Ensure the selected geometry is visually distinct
+        self.view3d.update()
+
+    def on_geometry_list_selected(self, item):
+        """Handle selection of a geometry from the list"""
+        geometry_name = item.text()
+        for geom in self.view3d.geometries:
+            if 'data' in geom and hasattr(geom['data'], 'metadata') and geom['data'].metadata.get('name') == geometry_name:
+                self.on_geometry_selected(geom)
+                self.selection_status.setText(f"Selected: {geometry_name}")
+                break
+
+    def refresh_geometries_list(self):
+        """Refresh the list of available geometries"""
+        self.geometries_list.clear()
+        for geom in self.view3d.geometries:
+            if 'data' in geom and hasattr(geom['data'], 'metadata'):
+                self.geometries_list.addItem(geom['data'].metadata.get('name', 'Unnamed Geometry'))
 
     def on_model_selected(self, item):
         """Handle selection of a model from the list"""
@@ -696,60 +729,6 @@ class StructuralSystemGenerator(QMainWindow):
                 else:
                     self.models_list.item(i).setSelected(False)
 
-    def enter_selection_mode(self):
-        """Toggle selection mode on/off"""
-        self.selection_active = not self.selection_active
-        
-        # Enable selection in the 3D viewer
-        self.view3d.enableSelectionMode(self.selection_active)
-        self.view3d.setSelectionType("Geometry")  # Always use Geometry selection
-        
-        # Update button text and status
-        btn_text = "Exit Selection Mode" if self.selection_active else "Enter Selection Mode"
-        status_text = "Selection Mode: Active" if self.selection_active else "Selection Mode: Inactive"
-        
-        # Find the button and update its text
-        for child in self.findChildren(QPushButton):
-            if child.text() in ["Enter Selection Mode", "Exit Selection Mode"]:
-                child.setText(btn_text)
-                break
-                
-        # Update status label
-        self.selection_status.setText(status_text)
-        
-        # Display a helpful message
-        if self.selection_active:
-            self.hover_hint.setText("Click on a geometry to select it")
-        else:
-            self.hover_hint.setText("Hover over geometry to highlight it for selection")
-    
-    def clear_selection(self):
-        """Clear the current selection"""
-        # Reset selection tracking
-        self.selected_geometry = None
-        
-        # Reset appearance for all geometries to default
-        for geom in self.view3d.geometries:
-            if 'mesh_item' in geom and geom['mesh_item'] is not None and 'data' in geom:
-                mesh = geom['data']
-                if hasattr(mesh, 'faces'):
-                    vertices = mesh.vertices
-                    faces = mesh.faces
-                    
-                    # Default semi-transparent blue
-                    face_colors = np.array([[0.7, 0.7, 1.0, 0.2] for _ in range(len(faces))])
-                    
-                    geom['mesh_item'].setMeshData(
-                        vertexes=vertices,
-                        faces=faces,
-                        faceColors=face_colors,
-                        smooth=True,
-                        drawEdges=False
-                    )
-        
-        # Update status
-        self.selection_status.setText("Selection cleared")
-    
     def update_system_parameters(self):
         """Update dynamic parameters based on selected system type"""
         system_type = self.system_type.currentText()
@@ -777,6 +756,13 @@ class StructuralSystemGenerator(QMainWindow):
             self.params_layout.addRow("Orientation:", orientation)
             self.dynamic_params_widgets["orientation"] = orientation
             
+            # Floor type parameter
+            floor_type = QComboBox()
+            floor_type.addItems(["Concrete Slab", "Composite Deck", "Timber", "Steel Deck"])
+            floor_type.setCurrentText("Concrete Slab")
+            self.params_layout.addRow("Floor Type:", floor_type)
+            self.dynamic_params_widgets["floor_type"] = floor_type
+            
         elif system_type == "Diagrid":
             # Angle parameter
             angle = QSpinBox()
@@ -793,6 +779,13 @@ class StructuralSystemGenerator(QMainWindow):
             self.params_layout.addRow("Cell Size:", cell_size)
             self.dynamic_params_widgets["cell_size"] = cell_size
             
+            # Floor type parameter
+            floor_type = QComboBox()
+            floor_type.addItems(["Concrete Slab", "Composite Deck", "Timber", "Steel Deck"])
+            floor_type.setCurrentText("Concrete Slab")
+            self.params_layout.addRow("Floor Type:", floor_type)
+            self.dynamic_params_widgets["floor_type"] = floor_type
+            
         elif system_type == "Space Frame":
             # Layer count parameter
             layers = QSpinBox()
@@ -806,6 +799,13 @@ class StructuralSystemGenerator(QMainWindow):
             node_type.addItems(["Ball Joint", "Rigid Connection"])
             self.params_layout.addRow("Node Type:", node_type)
             self.dynamic_params_widgets["node_type"] = node_type
+            
+            # Floor type parameter
+            floor_type = QComboBox()
+            floor_type.addItems(["Concrete Slab", "Composite Deck", "Timber", "Steel Deck"])
+            floor_type.setCurrentText("Concrete Slab")
+            self.params_layout.addRow("Floor Type:", floor_type)
+            self.dynamic_params_widgets["floor_type"] = floor_type
             
         elif system_type == "Voronoi":
             # Seed count parameter
@@ -822,6 +822,13 @@ class StructuralSystemGenerator(QMainWindow):
             self.params_layout.addRow("Relaxation:", relaxation)
             self.dynamic_params_widgets["relaxation"] = relaxation
             
+            # Floor type parameter
+            floor_type = QComboBox()
+            floor_type.addItems(["Concrete Slab", "Composite Deck", "Timber", "Steel Deck"])
+            floor_type.setCurrentText("Concrete Slab")
+            self.params_layout.addRow("Floor Type:", floor_type)
+            self.dynamic_params_widgets["floor_type"] = floor_type
+            
         elif system_type == "Triangulated":
             # Minimum angle parameter
             min_angle = QSpinBox()
@@ -836,6 +843,13 @@ class StructuralSystemGenerator(QMainWindow):
             refinement.setValue(1)
             self.params_layout.addRow("Refinement:", refinement)
             self.dynamic_params_widgets["refinement"] = refinement
+            
+            # Floor type parameter
+            floor_type = QComboBox()
+            floor_type.addItems(["Concrete Slab", "Composite Deck", "Timber", "Steel Deck"])
+            floor_type.setCurrentText("Concrete Slab")
+            self.params_layout.addRow("Floor Type:", floor_type)
+            self.dynamic_params_widgets["floor_type"] = floor_type
             
         elif system_type == "Waffle":
             # Slot depth parameter
@@ -853,6 +867,13 @@ class StructuralSystemGenerator(QMainWindow):
             slot_width.setSingleStep(0.01)
             self.params_layout.addRow("Slot Width:", slot_width)
             self.dynamic_params_widgets["slot_width"] = slot_width
+            
+            # Floor type parameter
+            floor_type = QComboBox()
+            floor_type.addItems(["Concrete Slab", "Composite Deck", "Timber", "Steel Deck"])
+            floor_type.setCurrentText("Concrete Slab")
+            self.params_layout.addRow("Floor Type:", floor_type)
+            self.dynamic_params_widgets["floor_type"] = floor_type
     
     def select_color(self):
         """Open color picker dialog for structural elements"""
@@ -862,43 +883,100 @@ class StructuralSystemGenerator(QMainWindow):
             # Update button color
             self.color_btn.setStyleSheet(f"background-color: rgb({color.red()}, {color.green()}, {color.blue()})")
     
-    def apply_system(self):
-        """Apply the selected structural system to the current model"""
-        if not self.mesh or not hasattr(self.selected_geometry, 'data'):
-            QMessageBox.warning(self, "Warning", "Please select a model first")
-            return
-            
-        system_type = self.system_type.currentText()
+    def enter_selection_mode(self):
+        """Toggle selection mode on/off"""
+        self.selection_active = not self.selection_active
         
+        # Enable selection in the 3D viewer
+        self.view3d.enableSelectionMode(self.selection_active)
+        self.view3d.setSelectionType("Geometry")  # Always use Geometry selection
+        
+        # Update button text and status
+        btn_text = "Exit Selection Mode" if self.selection_active else "Enter Selection Mode"
+        status_text = "Selection Mode: Active" if self.selection_active else "Selection Mode: Inactive"
+        
+        # Find the button and update its text
+        for child in self.findChildren(QPushButton):
+            if child.text() in ["Enter Selection Mode", "Exit Selection Mode"]:
+                child.setText(btn_text)
+                break
+                
+        # Update status label
+        self.selection_status.setText(status_text)
+    
+    def clear_selection(self):
+        """Clear the current selection"""
+        # Reset selection tracking
+        self.selected_geometry = None
+        
+        # Reset appearance for all geometries to default
+        for geom in self.view3d.geometries:
+            if geom['mesh_item'] is not None:
+                geom['mesh_item'].setColor((0.7, 0.7, 1.0, 0.2))  # Default semi-transparent blue
+        
+        # Update status
+        self.selection_status.setText("Selection cleared")
+        
+        # Deselect any selected items in the geometries list
+        self.geometries_list.clearSelection()
+        
+    def apply_system(self):
+        """Apply the selected structural system to the current geometry"""
+        if not self.selected_geometry:
+            # If no selection, check if there's an item selected in the list
+            selected_items = self.geometries_list.selectedItems()
+            if selected_items:
+                geometry_name = selected_items[0].text()
+                # Find the corresponding geometry
+                for geom in self.view3d.geometries:
+                    if 'data' in geom and hasattr(geom['data'], 'metadata') and geom['data'].metadata.get('name') == geometry_name:
+                        self.selected_geometry = geom
+                        break
+            else:
+                QMessageBox.warning(self, "Warning", "Please select a geometry first")
+                return
+
+        system_type = self.system_type.currentText()
+
         # Get common parameters
         density = self.density_slider.value() / 100.0  # Normalize to 0-1
         depth = self.depth_spin.value()
         color = self.element_color
         
-        # Create a dummy structural system for now (placeholder for real implementation)
+        # Get floor type 
+        floor_type = "Concrete Slab"  # Default
+        if "floor_type" in self.dynamic_params_widgets:
+            floor_type = self.dynamic_params_widgets["floor_type"].currentText()
+
+        # Create a structural system
         system_info = {
             'type': system_type,
             'density': density,
             'depth': depth,
             'color': color,
+            'floor_type': floor_type,
             'parameters': {},
             'mesh_items': []
         }
-        
+
         # Add system-specific parameters
         for param_name, widget in self.dynamic_params_widgets.items():
             if isinstance(widget, QSpinBox) or isinstance(widget, QDoubleSpinBox):
                 system_info['parameters'][param_name] = widget.value()
             elif isinstance(widget, QComboBox):
                 system_info['parameters'][param_name] = widget.currentText()
-        
-        # Display a "Not Implemented" message for now
+
+        # Display a message about the system application
+        geometry_name = "Unknown"
+        if self.selected_geometry and 'data' in self.selected_geometry and hasattr(self.selected_geometry['data'], 'metadata'):
+            geometry_name = self.selected_geometry['data'].metadata.get('name', "Unknown")
+            
         QMessageBox.information(self, "System Applied", 
-                              f"Applied {system_type} system with density {density:.2f} and depth {depth}.\n"
+                              f"Applied {system_type} system with density {density:.2f}, depth {depth}, and floor type {floor_type} to {geometry_name}.\n"
                               f"Note: This is a placeholder. Actual system generation to be implemented.")
-        
+
         # Add to systems list
-        system_name = f"{system_type} System #{len(self.structural_systems) + 1}"
+        system_name = f"{system_type} System on {geometry_name} #{len(self.structural_systems) + 1}"
         self.systems_list.addItem(system_name)
         system_info['name'] = system_name
         self.structural_systems.append(system_info)
