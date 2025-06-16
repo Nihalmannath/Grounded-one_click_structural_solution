@@ -10,7 +10,7 @@ import os
 import pyvista as pv
 
 # File path
-rhino_path = r"C:\Users\papad\Documents\GitHub\Octopusie\Reference Files\rectangles3dcantilever - Copy.3dm"
+rhino_path = r"79edaed4-a719-4390-a485-519b68fa68ea"
 if not os.path.exists(rhino_path):
     raise FileNotFoundError(f"File not found: {rhino_path}")
 
