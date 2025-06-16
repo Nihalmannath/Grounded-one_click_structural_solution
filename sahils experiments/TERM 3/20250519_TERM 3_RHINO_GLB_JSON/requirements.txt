@@ -1,0 +1,7 @@
+trimesh
+pyvista>=0.38.0
+numpy
+scipy
+PyQt5
+rhino3dm
+matplotlib
