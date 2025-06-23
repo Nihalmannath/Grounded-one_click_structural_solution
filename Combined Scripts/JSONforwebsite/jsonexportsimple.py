@@ -1,8 +1,3 @@
-# pip install -q rhino3dm shapely trimesh matplotlib pyvista pandas
-# pip install PyniteFEA[all]
-# pip install Pynite
-# pip install trimesh
-# pip install pygltflib
 
 ## --------------------------------------------------------------
 # GLB TO 3DM CONVERTER
@@ -19,6 +14,8 @@ import csv
 import pandas as pd
 from collections import OrderedDict
 import json
+from supabase import create_client, Client
+import requests
 
 # Fixed scale factor for all GLB files
 scale_factor = 1
@@ -120,9 +117,35 @@ def convert_glb_to_3dm(glb_path, output_3dm_path):
 
 # --- Define paths ---
 # Prompt the user for the GLB file path
+
+SUPABASE_URL = "https://apdbfbjnlsxjfubqahtl.supabase.co/storage/v1/s3 "
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZGJmYmpubHN4amZ1YnFhaHRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc0NzY1MzgsImV4cCI6MjA2MzA1MjUzOH0.DPINyYHHUzcuQ6AOcp8hh1W1eIiamOFPKFRMNfHypSU"
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# File info
+bucket_name = "models"
+folder_path = "79edaed4-a719-4390-a485-519b68fa68ea"
+file_name = "model.glb"  # Change if the filename is different
+
+# Create client and get signed URL
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+storage_path = f"{folder_path}/{file_name}"
+
+signed = supabase.storage.from_(bucket_name).create_signed_url(storage_path, 60)
+download_url = signed.get("signedURL")
+
+# Download GLB file to a temporary location
+glb_local_path = os.path.join(os.getcwd(), file_name)
+with open(glb_local_path, "wb") as f:
+    response = requests.get(download_url)
+    response.raise_for_status()  # Raise error if download fails
+    f.write(response.content)
+
+glb_file_path = glb_local_path  # Now this is ready to use downstream
+print(f"✅ GLB downloaded from Supabase to: {glb_file_path}")
+
 while True:
-    glb_input_path = input("Please enter the full path to your GLB file: ").strip().strip('"').strip("'")
-    glb_file_path = os.path.abspath(os.path.expanduser(glb_input_path))
+    glb_file_path = glb_local_path
 
     if os.path.exists(glb_file_path):
         if glb_file_path.lower().endswith(".glb"):
@@ -617,166 +640,6 @@ max_x_plot = max(col_max_x_extent, max([coord[0] for coord in perimeter_line_coo
 min_y_plot = min(col_min_y_extent, min([coord[1] for coord in perimeter_line_coords] + [col[1] for col in all_base_columns])) - 1.0 if perimeter_line_coords else col_min_y_extent - 1.0
 max_y_plot = max(col_max_y_extent, max([coord[1] for coord in perimeter_line_coords] + [col[1] for col in all_base_columns])) + 2.0 if perimeter_line_coords else col_max_y_extent + 2.0
 
-
-# # 2D Visualization
-# # --------------------------------------------------------------
-# # REVISED 2D Visualization - Floor Plans with Cantilevers
-# # --------------------------------------------------------------
-
-# if not sorted_floor_z_levels:
-#     print("No distinct floor Z-levels found for plotting.")
-# else:
-#     print("\n--- Generating Floor Plans with Cantilever Visualizations ---")
-
-#     # Determine overall plot limits based on all geometries for consistent scaling
-#     all_x_coords = []
-#     all_y_coords = []
-
-#     for poly_list in floor_footprints_by_level.values():
-#         for poly in poly_list:
-#             if poly.geom_type == 'Polygon':
-#                 px, py = poly.exterior.xy
-#                 all_x_coords.extend(px)
-#                 all_y_coords.extend(py)
-#             elif poly.geom_type == 'MultiPolygon':
-#                 for geom in poly.geoms:
-#                     if geom.geom_type == 'Polygon':
-#                         px, py = geom.exterior.xy
-#                         all_x_coords.extend(px)
-#                         all_y_coords.extend(py)
-
-#     if all_x_coords and all_y_coords:
-#         min_overall_x, max_overall_x = min(all_x_coords), max(all_x_coords)
-#         min_overall_y, max_overall_y = min(all_y_coords), max(all_y_coords)
-#         plot_buffer = 5.0 # Add some buffer around the overall building extent
-#         min_overall_x -= plot_buffer
-#         max_overall_x += plot_buffer
-#         min_overall_y -= plot_buffer
-#         max_overall_y += plot_buffer
-#     else:
-#         min_overall_x, max_overall_x = -10, 10 # Default if no geometry
-#         min_overall_y, max_overall_y = -10, 10
-
-
-#     # Get the Z-level of the ground floor and the first floor above it
-#     ground_floor_z = sorted_floor_z_levels[0] if len(sorted_floor_z_levels) >= 1 else None
-#     first_floor_above_ground_z = sorted_floor_z_levels[1] if len(sorted_floor_z_levels) >= 2 else None
-
-
-#     for i, current_floor_z in enumerate(sorted_floor_z_levels):
-#         fig, ax = plt.subplots(figsize=(12, 10))
-        
-#         current_floor_polygons = floor_footprints_by_level.get(current_floor_z, [])
-#         floor_label = f"Floor {i} (Z={current_floor_z:.2f}m)"
-
-#         # 1. Plot the current floor's footprint(s)
-#         for poly in current_floor_polygons:
-#             if poly.geom_type == 'Polygon':
-#                 px, py = poly.exterior.xy
-#                 ax.plot(px, py, 'k-', linewidth=1.5, label=f'{floor_label} Footprint' if not ax.lines else "")
-#             elif poly.geom_type == 'MultiPolygon':
-#                 for geom in poly.geoms:
-#                     if geom.geom_type == 'Polygon':
-#                         px, py = geom.exterior.xy
-#                         ax.plot(px, py, 'k-', linewidth=1.5)
-
-#         # 2. Plot the lower floor's footprint (for context, if it exists)
-#         # This will now always show the floor directly below, regardless of cantilever detection
-#         if i > 0:
-#             lower_floor_z_context = sorted_floor_z_levels[i-1]
-#             lower_floor_polygons_context = floor_footprints_by_level.get(lower_floor_z_context, [])
-#             combined_lower_floor_footprint_context = unary_union(lower_floor_polygons_context)
-#             if not combined_lower_floor_footprint_context.is_empty:
-#                 if combined_lower_floor_footprint_context.geom_type == 'Polygon':
-#                     px, py = combined_lower_floor_footprint_context.exterior.xy
-#                     ax.plot(px, py, 'gray', linestyle=':', linewidth=1, label=f'Lower Floor (Z={lower_floor_z_context:.2f}m) Footprint')
-#                 elif combined_lower_floor_footprint_context.geom_type == 'MultiPolygon':
-#                     for geom in combined_lower_floor_footprint_context.geoms:
-#                         if geom.geom_type == 'Polygon':
-#                             px, py = geom.exterior.xy
-#                             ax.plot(px, py, 'gray', linestyle=':', linewidth=1, label=f'Lower Floor (Z={lower_floor_z_context:.2f}m) Footprint' if not ax.lines else "") # Only label once
-
-#         # 3. Highlight cantilever parts, ONLY if this is the first floor above ground
-#         cantilever_plotted = False
-#         if current_floor_z == first_floor_above_ground_z: # Only plot cantilevers on the designated "first floor"
-#             for cantilever_info in detected_cantilevers:
-#                 if cantilever_info['UpperFloorZ'] == current_floor_z: # This check is now redundant but harmless if list is filtered correctly
-#                     cantilever_geom = cantilever_info['CantileverGeometry']
-#                     if cantilever_geom.geom_type == 'Polygon':
-#                         px, py = cantilever_geom.exterior.xy
-#                         ax.fill(px, py, color='red', alpha=0.5, label='Cantilever' if not cantilever_plotted else "")
-#                         ax.plot(px, py, 'red', linestyle='--', linewidth=2)
-#                         cantilever_plotted = True
-#                     elif cantilever_geom.geom_type == 'MultiPolygon':
-#                         for geom in cantilever_geom.geoms:
-#                             if geom.geom_type == 'Polygon':
-#                                 px, py = geom.exterior.xy
-#                                 ax.fill(px, py, color='red', alpha=0.5, label='Cantilever' if not cantilever_plotted else "")
-#                                 ax.plot(px, py, 'red', linestyle='--', linewidth=2)
-#                                 cantilever_plotted = True
-
-#         # 4. Plot columns and beams on this floor (with cantilever-aware filtering for ground floor)
-#         columns_to_plot_2d = []
-#         # Ensure ground_floor_z is not None before attempting comparison
-#         if ground_floor_z is not None: 
-#             for col_x, col_y in columns_2d_points:
-#                 rounded_col_xy = (round(col_x, 5), round(col_y, 5))
-                
-#                 # If this is the ground floor AND the column is marked to skip ground-to-first span,
-#                 # then DO NOT plot it on the ground floor plan.
-#                 if current_floor_z == ground_floor_z and rounded_col_xy in columns_to_skip_ground_to_first_span:
-#                     continue # Skip plotting this column on the ground floor plan
-#                 else:
-#                     columns_to_plot_2d.append((col_x, col_y))
-#         else: # If ground_floor_z is None, just plot all columns (no specific ground floor rule applies)
-#             columns_to_plot_2d = columns_2d_points
-
-
-#         if columns_to_plot_2d:
-#             gx, gy = zip(*columns_to_plot_2d)
-#             ax.scatter(gx, gy, c='blue', s=40, label='Columns', zorder=5)
-#         else:
-#             print(f"No columns to plot for {floor_label}.")
-
-
-#         if beams_2d_lines:
-#             first_beam_plotted = False
-#             for p1, p2 in beams_2d_lines:
-#                 # Beams are generally shown on all floors where they exist horizontally.
-#                 # No specific filtering needed here unless you have unique ground-level beam rules.
-                
-#                 if not first_beam_plotted:
-#                     ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color='green', linestyle=':', linewidth=1, label='Beam Lines')
-#                     first_beam_plotted = True
-#                 else:
-#                     ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color='green', linestyle=':', linewidth=1)
-
-#         # General plot settings for each floor plan
-#         ax.set_aspect('equal', 'box')
-#         ax.set_title(f"Floor Plan - {floor_label}")
-#         ax.set_xlabel("X (m)")
-#         ax.set_ylabel("Y (m)")
-#         ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
-        
-#         # Set consistent plot limits for all floor plans
-#         ax.set_xlim(min_overall_x, max_overall_x)
-#         ax.set_ylim(min_overall_y, max_overall_y)
-
-#         plt.tight_layout()
-#         plt.show()
-
-# # If you still want the combined building plot from before, you can keep it
-# # Your existing 2D Visualization block for the entire building can remain here if desired.
-# # For example:
-# fig_combined, ax_combined = plt.subplots(figsize=(12, 10))
-# # ... (rest of your original combined plot code for the combined plot) ...
-# plt.show()
-# # If you still want the combined building plot from before, you can keep it
-# # Your existing 2D Visualization block for the entire building can remain here if desired.
-# # For example:
-# fig_combined, ax_combined = plt.subplots(figsize=(12, 10))
-# # ... (rest of your original combined plot code) ...
-# plt.show()
 
 # --- Utility function for wall height ---
 def get_wall_height(x, y, mesh_bboxes, global_max_z):
@@ -1459,273 +1322,4 @@ beams_json_data = df_beams_updated.to_dict(orient='records')
 with open(beams_json_path_updated, 'w') as f:
     json.dump(beams_json_data, f, indent=4)
 print(f"✅ beams.json (updated) written to {beams_json_path_updated}")
-
-
-# # --- RE-VISUALIZE THE UPDATED STRUCTURE ---
-# print("\n--- Re-visualizing the updated structural model ---")
-
-# # Prepare data for plotting lines (columns and beams from updated DFs)
-# column_plotly_lines_x, column_plotly_lines_y, column_plotly_lines_z = [], [], []
-# beam_plotly_lines_x, beam_plotly_lines_y, beam_plotly_lines_z = [], [], []
-
-# # Add Columns to line data
-# for index, row in df_columns_updated.iterrows():
-#     try:
-#         p1 = node_lookup_loaded.loc[row['i_node'], ['X', 'Y', 'Z']]
-#         p2 = node_lookup_loaded.loc[row['j_node'], ['X', 'Y', 'Z']]
-#         column_plotly_lines_x.extend([p1['X'], p2['X'], None])
-#         column_plotly_lines_y.extend([p1['Y'], p2['Y'], None])
-#         column_plotly_lines_z.extend([p1['Z'], p2['Z'], None])
-#     except KeyError as e:
-#         print(f"Warning: Node ID not found in lookup for updated column {row['ID']}: {e}. Skipping.")
-
-# # Add Beams to line data
-# for index, row in df_beams_updated.iterrows():
-#     try:
-#         p1 = node_lookup_loaded.loc[row['i_node'], ['X', 'Y', 'Z']]
-#         p2 = node_lookup_loaded.loc[row['j_node'], ['X', 'Y', 'Z']]
-#         beam_plotly_lines_x.extend([p1['X'], p2['X'], None])
-#         beam_plotly_lines_y.extend([p1['Y'], p2['Y'], None])
-#         beam_plotly_lines_z.extend([p1['Z'], p2['Z'], None])
-#     except KeyError as e:
-#         print(f"Warning: Node ID not found in lookup for updated beam {row['ID']}: {e}. Skipping.")
-
-
-# # Create Plotly traces for nodes, columns, and beams using the UPDATED DataFrames
-# trace_nodes = go.Scatter3d(
-#     x=df_nodes_updated['X'],
-#     y=df_nodes_updated['Y'],
-#     z=df_nodes_updated['Z'],
-#     mode='markers',
-#     marker=dict(size=5, color='black'),
-#     name='Nodes',
-#     text=df_nodes_updated['ID'],
-#     hoverinfo='text'
-# )
-
-# trace_columns = go.Scatter3d(
-#     x=column_plotly_lines_x,
-#     y=column_plotly_lines_y,
-#     z=column_plotly_lines_z,
-#     mode='lines',
-#     line=dict(color='blue', width=5),
-#     name='Columns'
-# )
-
-# trace_beams = go.Scatter3d(
-#     x=beam_plotly_lines_x,
-#     y=beam_plotly_lines_y,
-#     z=beam_plotly_lines_z,
-#     mode='lines',
-#     line=dict(color='green', width=3),
-#     name='Beams'
-# )
-
-# # Create the Plotly figure
-# fig = go.Figure(data=[trace_nodes, trace_columns, trace_beams])
-
-# # Set layout properties
-# fig.update_layout(
-#     title='3D Structural Visualization: Low-Connectivity Linear Beams on Peak Roofs DELETED',
-#     scene=dict(
-#         xaxis_title='X Coordinate',
-#         yaxis_title='Y Coordinate',
-#         zaxis_title='Z Coordinate',
-#         aspectmode='data'
-#     ),
-#     margin=dict(l=0, r=0, b=0, t=40)
-# )
-
-# # Display the plot
-# fig.show()
-
-# # ─────────────────────────────────────────────────────────────────
-# # 1) IMPORTS
-# # ─────────────────────────────────────────────────────────────────
-# from Pynite.Visualization import Renderer
-# from Pynite.FEModel3D import FEModel3D
-# import pandas as pd
-# import numpy as np
-
-
-# # ─────────────────────────────────────────────────────────────────
-# # 3) INITIALIZE A NEW FINITE‐ELEMENT MODEL
-# # ─────────────────────────────────────────────────────────────────
-# model = FEModel3D()
-
-# # ─────────────────────────────────────────────────────────────────
-# # 4) ADD NODES TO THE MODEL
-# # ─────────────────────────────────────────────────────────────────
-# # Convert meters → inches
-# UNIT_CONVERSION = 39.37   # meters to inches
-
-# for _, row in df_nodes_updated.iterrows():
-#     nid = str(row['ID'])
-#     model.add_node(
-#         nid,
-#         row['X'] * UNIT_CONVERSION,
-#         row['Y'] * UNIT_CONVERSION,
-#         row['Z'] * UNIT_CONVERSION
-#     )
-
-
-# # ─────────────────────────────────────────────────────────────────
-# # 5) DEFINE MATERIAL & SECTION (RCC)
-# # ─────────────────────────────────────────────────────────────────
-# f_c   = 4.0               # concrete compressive strength (ksi)
-# E_c   = 57000 * (f_c ** 0.5)      # elastic modulus (ksi)
-# G_c   = E_c / (2 * (1 + 0.2))    # shear modulus (ksi), ν≈0.2
-# rho_c = (150 / 1728) * 1e-3      # density (kip/in³)
-
-# model.add_material('RCC', E_c, G_c, f_c, rho_c)
-
-# # Section geometry (all members use W14X30 here)
-# A, Iy, Iz, J = 8.84, 49.0, 14.4, 0.95
-# model.add_section('W14X30', A, Iy, Iz, J)
-
-# # ─────────────────────────────────────────────────────────────────
-# # 6) ADD MEMBERS (BEAMS + COLUMNS)
-# # ─────────────────────────────────────────────────────────────────
-# for _, row in df_beams_updated.iterrows():
-#     bid = str(row['ID'])
-#     iN  = str(row['i_node'])
-#     jN  = str(row['j_node'])
-#     model.add_member(bid, iN, jN, 'RCC', 'W14X30')
-
-# for _, row in df_columns_updated.iterrows():
-#     cid = str(row['ID'])
-#     iN  = str(row['i_node'])
-#     jN  = str(row['j_node'])
-#     model.add_member(cid, iN, jN, 'RCC', 'W14X30')
-
-# # ─────────────────────────────────────────────────────────────────
-# # 7) DEFINE SUPPORTS (Z=0 nodes fully fixed)
-# # ─────────────────────────────────────────────────────────────────
-# for _, row in df_nodes_updated.iterrows():
-#     fixed = (row['Z'] == 0)
-#     model.def_support(
-#         str(row['ID']),
-#         fixed, fixed, fixed,    # Tx, Ty, Tz
-#         fixed, fixed, fixed     # Rx, Ry, Rz
-#     )
-
-# # ─────────────────────────────────────────────────────────────────
-# # 8) COMPUTE MEMBER LENGTHS
-# # ─────────────────────────────────────────────────────────────────
-# beam_lengths   = {}
-# column_lengths = {}
-
-# for _, row in df_beams_updated.iterrows():
-#     mid = str(row['ID'])
-#     iN, jN = str(row['i_node']), str(row['j_node'])
-#     xi, yi, zi = model.nodes[iN].X, model.nodes[iN].Y, model.nodes[iN].Z
-#     xj, yj, zj = model.nodes[jN].X, model.nodes[jN].Y, model.nodes[jN].Z
-#     beam_lengths[mid] = float(np.sqrt((xj-xi)**2 + (yj-yi)**2 + (zj-zi)**2))
-
-# for _, row in df_columns_updated.iterrows():
-#     mid = str(row['ID'])
-#     iN, jN = str(row['i_node']), str(row['j_node'])
-#     xi, yi, zi = model.nodes[iN].X, model.nodes[iN].Y, model.nodes[iN].Z
-#     xj, yj, zj = model.nodes[jN].X, model.nodes[jN].Y, model.nodes[jN].Z
-#     column_lengths[mid] = float(np.sqrt((xj-xi)**2 + (yj-yi)**2 + (zj-zi)**2))
-
-# # ─────────────────────────────────────────────────────────────────
-# # 9–10) APPLY EQUIVALENT DISTRIBUTED LOADS FOR DL & LL
-# # ─────────────────────────────────────────────────────────────────
-# length_lookup = {**beam_lengths, **column_lengths}
-
-# for mid in model.members:
-#     if mid not in length_lookup:
-#         raise KeyError(f"No length for member '{mid}'")
-#     L = length_lookup[mid]
-
-#     # Dead/Live intensities (kN/m)
-#     if mid in beam_lengths:
-#         w_DL, w_LL = -0.02, -0.015     # beams
-#     else:
-#         w_DL, w_LL = -0.01, -0.008     # columns
-
-#     # Apply distributed loads across full member length
-#     model.add_member_dist_load(mid, 'FZ', w_DL, w_LL, 0, L, case='DL')
-#     model.add_member_dist_load(mid, 'FZ', w_LL, w_LL, 0, L, case='LL')
-
-# # ─────────────────────────────────────────────────────────────────
-# # 10.5) APPLY LATERAL NODE LOAD (“W”)
-# # ─────────────────────────────────────────────────────────────────
-# # for nid in model.nodes:
-# #    model.add_node_load(nid, 'FY', -25, case='W')
-
-# # ─────────────────────────────────────────────────────────────────
-# # 11) DEFINE LOAD COMBINATIONS
-# # ─────────────────────────────────────────────────────────────────
-# model.add_load_combo('0.9DL+1.0W', factors={'DL': 1.2, 'W': 1.0})
-# model.add_load_combo('1.2DL+1.0W', factors={'DL': 0.9, 'W': 1.0})
-
-# # ─────────────────────────────────────────────────────────────────
-# # 12) RUN YOUR ANALYSIS
-# # ─────────────────────────────────────────────────────────────────
-# model.analyze()
-
-# # ─────────────────────────────────────────────────────────────────
-# # 12.5) VISUALIZE DEFORMED SHAPE
-# # ─────────────────────────────────────────────────────────────────
-# rndr = Renderer(model)
-# rndr.annotation_size = 1.3
-# rndr.deformed_shape   = True
-# rndr.deformed_scale   = 50
-# rndr.combo_name       = '1.2DL+1.0W'
-# rndr.show_loads       = True
-# rndr.show_reactions   = True
-# rndr.window_width     = 750
-# rndr.window_height    = 750
-# rndr.render_model()
-
-# # ─────────────────────────────────────────────────────────────────
-# # 13) COLUMN SLENDERNESS CHECK (L/r)
-# # ─────────────────────────────────────────────────────────────────
-# slenderness_limit_col = 200.0
-# print("\nCOLUMN SLENDERNESS CHECK (L/r):")
-# for _, row in df_columns_updated.iterrows():
-#     cid = str(row['ID'])
-#     L   = column_lengths[cid]
-#     sec = model.sections['W14X30']
-#     r_y = np.sqrt(sec.Iy / sec.A)
-#     r_z = np.sqrt(sec.Iz / sec.A)
-#     r   = min(r_y, r_z)
-#     sl  = L / r
-#     status = "PASS" if sl <= slenderness_limit_col else "FAIL"
-#     print(f"   Column {cid}: L={L:.2f} in, r={r:.2f} in → L/r={sl:.1f} ({status})")
-
-# # ─────────────────────────────────────────────────────────────────
-# # 14) BEAM SLENDERNESS CHECK (L/r)
-# # ─────────────────────────────────────────────────────────────────
-# slenderness_limit_beam = 300.0
-# print("\nBEAM SLENDERNESS CHECK (L/r):")
-# for _, row in df_beams_updated.iterrows():
-#     bid = str(row['ID'])
-#     L   = beam_lengths[bid]
-#     sec = model.sections['W14X30']
-#     r_y = np.sqrt(sec.Iy / sec.A)
-#     r_z = np.sqrt(sec.Iz / sec.A)
-#     r   = min(r_y, r_z)
-#     sl  = L / r
-#     status = "PASS" if sl <= slenderness_limit_beam else "FAIL"
-#     print(f"   Beam   {bid}: L={L:.2f} in, r={r:.2f} in → L/r={sl:.1f} ({status})")
-
-# # ─────────────────────────────────────────────────────────────────
-# # 15) PRINT GLOBAL STIFFNESS MATRIX & NODAL DISPLACEMENTS
-# # ─────────────────────────────────────────────────────────────────
-# K_sparse = model.K(combo_name='1.2DL+1.0W', log=True, check_stability=True, sparse=True)
-# K_dense  = K_sparse.toarray()
-# print("\nGlobal Stiffness Matrix [K] (size {}×{}):".format(*K_dense.shape))
-# labels = [f"{nid}_{dof}" for nid in model.nodes for dof in ('DX','DY','DZ','RX','RY','RZ')]
-# K_df = pd.DataFrame(K_dense, index=labels, columns=labels)
-# print(K_df)
-
-# print("\nNODAL DISPLACEMENTS (1.2DL+1.0W):")
-# for nid, node in model.nodes.items():
-#     dx = node.DX.get('1.2DL+1.0W', 0.0)
-#     dy = node.DY.get('1.2DL+1.0W', 0.0)
-#     dz = node.DZ.get('1.2DL+1.0W', 0.0)
-#     print(f"   Node {nid}: DX={dx:.6e} in, DY={dy:.6e} in, DZ={dz:.6e} in")
 
