@@ -3,348 +3,336 @@
         "ID": "C0",
         "i_node": "N0",
         "j_node": "N1",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C1",
         "i_node": "N1",
         "j_node": "N2",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C2",
         "i_node": "N3",
         "j_node": "N4",
-        "length": 2.224
+        "length": 2.5
     },
     {
         "ID": "C3",
         "i_node": "N4",
         "j_node": "N5",
-        "length": 2.224
+        "length": 2.5
     },
     {
         "ID": "C4",
         "i_node": "N6",
         "j_node": "N7",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C5",
         "i_node": "N7",
         "j_node": "N8",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C6",
-        "i_node": "N9",
-        "j_node": "N10",
-        "length": 3.0
+        "i_node": "N8",
+        "j_node": "N9",
+        "length": 7.5
     },
     {
         "ID": "C7",
         "i_node": "N10",
         "j_node": "N11",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C8",
-        "i_node": "N12",
-        "j_node": "N13",
-        "length": 3.0
+        "i_node": "N11",
+        "j_node": "N12",
+        "length": 2.5
     },
     {
         "ID": "C9",
-        "i_node": "N13",
-        "j_node": "N14",
-        "length": 3.0
+        "i_node": "N12",
+        "j_node": "N13",
+        "length": 7.5
     },
     {
         "ID": "C10",
-        "i_node": "N15",
-        "j_node": "N16",
-        "length": 3.0
+        "i_node": "N14",
+        "j_node": "N15",
+        "length": 2.5
     },
     {
         "ID": "C11",
-        "i_node": "N16",
-        "j_node": "N17",
-        "length": 3.0
+        "i_node": "N15",
+        "j_node": "N16",
+        "length": 2.5
     },
     {
         "ID": "C12",
-        "i_node": "N18",
-        "j_node": "N19",
-        "length": 3.0
+        "i_node": "N16",
+        "j_node": "N17",
+        "length": 7.5
     },
     {
         "ID": "C13",
-        "i_node": "N19",
-        "j_node": "N20",
-        "length": 3.0
+        "i_node": "N18",
+        "j_node": "N19",
+        "length": 2.5
     },
     {
         "ID": "C14",
-        "i_node": "N21",
-        "j_node": "N22",
-        "length": 3.0
+        "i_node": "N19",
+        "j_node": "N20",
+        "length": 2.5
     },
     {
         "ID": "C15",
-        "i_node": "N22",
-        "j_node": "N23",
-        "length": 3.0
+        "i_node": "N21",
+        "j_node": "N22",
+        "length": 2.5
     },
     {
         "ID": "C16",
-        "i_node": "N24",
-        "j_node": "N25",
-        "length": 3.0
+        "i_node": "N22",
+        "j_node": "N23",
+        "length": 2.5
     },
     {
         "ID": "C17",
-        "i_node": "N25",
-        "j_node": "N26",
-        "length": 3.0
+        "i_node": "N24",
+        "j_node": "N25",
+        "length": 2.5
     },
     {
         "ID": "C18",
-        "i_node": "N27",
-        "j_node": "N28",
-        "length": 3.0
+        "i_node": "N25",
+        "j_node": "N26",
+        "length": 2.5
     },
     {
         "ID": "C19",
-        "i_node": "N28",
-        "j_node": "N29",
-        "length": 3.0
+        "i_node": "N27",
+        "j_node": "N28",
+        "length": 2.5
     },
     {
         "ID": "C20",
-        "i_node": "N30",
-        "j_node": "N31",
-        "length": 3.0
+        "i_node": "N28",
+        "j_node": "N29",
+        "length": 2.5
     },
     {
         "ID": "C21",
-        "i_node": "N31",
-        "j_node": "N32",
-        "length": 3.0
+        "i_node": "N30",
+        "j_node": "N31",
+        "length": 2.5
     },
     {
         "ID": "C22",
-        "i_node": "N33",
-        "j_node": "N34",
-        "length": 3.0
+        "i_node": "N32",
+        "j_node": "N33",
+        "length": 2.5
     },
     {
         "ID": "C23",
-        "i_node": "N34",
-        "j_node": "N35",
-        "length": 3.0
+        "i_node": "N33",
+        "j_node": "N34",
+        "length": 2.5
     },
     {
         "ID": "C24",
-        "i_node": "N36",
-        "j_node": "N37",
-        "length": 3.0
+        "i_node": "N34",
+        "j_node": "N35",
+        "length": 7.5
     },
     {
         "ID": "C25",
-        "i_node": "N37",
-        "j_node": "N38",
-        "length": 3.0
+        "i_node": "N36",
+        "j_node": "N37",
+        "length": 2.5
     },
     {
         "ID": "C26",
-        "i_node": "N39",
-        "j_node": "N40",
-        "length": 3.0
+        "i_node": "N37",
+        "j_node": "N38",
+        "length": 2.5
     },
     {
         "ID": "C27",
-        "i_node": "N40",
-        "j_node": "N41",
-        "length": 3.0
+        "i_node": "N38",
+        "j_node": "N39",
+        "length": 7.5
     },
     {
         "ID": "C28",
-        "i_node": "N42",
-        "j_node": "N43",
-        "length": 3.0
+        "i_node": "N40",
+        "j_node": "N41",
+        "length": 2.5
     },
     {
         "ID": "C29",
-        "i_node": "N43",
-        "j_node": "N44",
-        "length": 3.0
+        "i_node": "N42",
+        "j_node": "N43",
+        "length": 2.5
     },
     {
         "ID": "C30",
-        "i_node": "N45",
-        "j_node": "N46",
-        "length": 3.0
+        "i_node": "N43",
+        "j_node": "N44",
+        "length": 2.5
     },
     {
         "ID": "C31",
-        "i_node": "N46",
-        "j_node": "N47",
-        "length": 3.0
+        "i_node": "N45",
+        "j_node": "N46",
+        "length": 2.5
     },
     {
         "ID": "C32",
-        "i_node": "N48",
-        "j_node": "N49",
-        "length": 3.0
+        "i_node": "N47",
+        "j_node": "N48",
+        "length": 2.5
     },
     {
         "ID": "C33",
-        "i_node": "N49",
-        "j_node": "N50",
-        "length": 3.0
+        "i_node": "N48",
+        "j_node": "N49",
+        "length": 2.5
     },
     {
         "ID": "C34",
-        "i_node": "N51",
-        "j_node": "N52",
-        "length": 1.5
+        "i_node": "N50",
+        "j_node": "N51",
+        "length": 2.5
     },
     {
         "ID": "C35",
-        "i_node": "N52",
-        "j_node": "N53",
-        "length": 1.5
+        "i_node": "N51",
+        "j_node": "N52",
+        "length": 2.5
     },
     {
         "ID": "C36",
-        "i_node": "N54",
-        "j_node": "N55",
-        "length": 2.224
+        "i_node": "N53",
+        "j_node": "N54",
+        "length": 2.5
     },
     {
         "ID": "C37",
-        "i_node": "N55",
-        "j_node": "N56",
-        "length": 2.224
+        "i_node": "N54",
+        "j_node": "N55",
+        "length": 2.5
     },
     {
         "ID": "C38",
-        "i_node": "N57",
-        "j_node": "N58",
-        "length": 3.0
+        "i_node": "N56",
+        "j_node": "N57",
+        "length": 2.5
     },
     {
         "ID": "C39",
         "i_node": "N58",
         "j_node": "N59",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C40",
         "i_node": "N60",
         "j_node": "N61",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C41",
         "i_node": "N61",
         "j_node": "N62",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C42",
-        "i_node": "N63",
-        "j_node": "N64",
-        "length": 3.0
+        "i_node": "N62",
+        "j_node": "N63",
+        "length": 7.5
     },
     {
         "ID": "C43",
         "i_node": "N64",
         "j_node": "N65",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C44",
-        "i_node": "N66",
-        "j_node": "N67",
-        "length": 1.5
+        "i_node": "N65",
+        "j_node": "N66",
+        "length": 2.5
     },
     {
         "ID": "C45",
         "i_node": "N67",
         "j_node": "N68",
-        "length": 1.5
+        "length": 2.5
     },
     {
         "ID": "C46",
-        "i_node": "N69",
-        "j_node": "N70",
-        "length": 3.0
+        "i_node": "N68",
+        "j_node": "N69",
+        "length": 2.5
     },
     {
         "ID": "C47",
         "i_node": "N70",
         "j_node": "N71",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C48",
-        "i_node": "N72",
-        "j_node": "N73",
-        "length": 3.0
+        "i_node": "N71",
+        "j_node": "N72",
+        "length": 2.5
     },
     {
         "ID": "C49",
-        "i_node": "N73",
-        "j_node": "N74",
-        "length": 3.0
+        "i_node": "N72",
+        "j_node": "N73",
+        "length": 7.5
     },
     {
         "ID": "C50",
-        "i_node": "N75",
-        "j_node": "N76",
-        "length": 3.0
+        "i_node": "N74",
+        "j_node": "N75",
+        "length": 2.5
     },
     {
         "ID": "C51",
         "i_node": "N76",
         "j_node": "N77",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C52",
         "i_node": "N78",
         "j_node": "N79",
-        "length": 3.0
+        "length": 2.5
     },
     {
         "ID": "C53",
-        "i_node": "N79",
-        "j_node": "N80",
-        "length": 3.0
+        "i_node": "N80",
+        "j_node": "N81",
+        "length": 2.5
     },
     {
         "ID": "C54",
-        "i_node": "N81",
-        "j_node": "N82",
-        "length": 3.0
+        "i_node": "N82",
+        "j_node": "N83",
+        "length": 2.5
     },
     {
         "ID": "C55",
-        "i_node": "N82",
-        "j_node": "N83",
-        "length": 3.0
-    },
-    {
-        "ID": "C56",
-        "i_node": "N84",
-        "j_node": "N85",
-        "length": 3.0
-    },
-    {
-        "ID": "C57",
-        "i_node": "N85",
-        "j_node": "N86",
-        "length": 3.0
+        "i_node": "N83",
+        "j_node": "N84",
+        "length": 2.5
     }
 ]
