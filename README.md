@@ -22,7 +22,8 @@ Features:
    
 ![Screenshot 2025-07-06 124005](https://github.com/user-attachments/assets/30f0e2a6-820d-44de-858f-73b515cb5b02)
 
-![Screenshot 2025-07-06 124028](https://github.com/user-attachments/assets/73f4d364-3bc5-4f49-905b-0dad13ca786e)
+![Screenshot 2025-07-06 141525](https://github.com/user-attachments/assets/7c22862c-0ae1-448f-aa65-cf5021bdb2e5)
+
 
 Output:
 JSON/CSV of detected structural elements (walls, floors, columns)
