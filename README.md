@@ -18,7 +18,7 @@ Features:
    Adapts column placement rules to geometry constraints (e.g., perimeter-first logic)
 3. Structural Assessment with PyNite
    Applies finite element analysis (FEA) to estimate displacement and stress
-   Outputs a report on load paths, floor stiffness, and structural weaknesses\
+   Outputs a report on load paths, floor stiffness, and structural weaknesses
 
 ![Screenshot 2025-07-06 124005](https://github.com/user-attachments/assets/30f0e2a6-820d-44de-858f-73b515cb5b02)
 
