@@ -7,7 +7,7 @@ Overview:
 Grounded Structural Solutions is a predictive design tool built to assist architects during the conceptual design phase. It offers early structural feedback by processing simplified 3D models and suggesting optimal structural strategies—without compromising creativity.
 
 How It Works:
-Users upload a .obj file consisting of orthogonal volumes (e.g., boxes, extrusions, aligned forms). The tool processes this geometry through several automated stages:
+Users upload a .glb or .obj file consisting of orthogonal volumes (e.g., boxes, extrusions, aligned forms). The tool processes this geometry through several automated stages:
 
 Features:
 1. Mesh segmentation with trimesh
