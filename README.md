@@ -22,7 +22,7 @@ Features:
    
 ![Screenshot 2025-07-06 124005](https://github.com/user-attachments/assets/30f0e2a6-820d-44de-858f-73b515cb5b02)
 
-![Screenshot 2025-07-06 141525](https://github.com/user-attachments/assets/7c22862c-0ae1-448f-aa65-cf5021bdb2e5)
+![Screenshot 2025-07-06 124028](https://github.com/user-attachments/assets/b90521f5-b0fc-48d7-abb3-d75732b03d25)
 
 
 Output:
@@ -33,7 +33,8 @@ Structural grid visualized
 
 PyNite-based summary report: displacements, reaction forces, and warnings
 
-![Screenshot 2025-07-06 141147](https://github.com/user-attachments/assets/4733d67a-be14-4613-bc02-640a1266903a)
+![Screenshot 2025-07-06 141525](https://github.com/user-attachments/assets/7c22862c-0ae1-448f-aa65-cf5021bdb2e5)
+
 
 Developed as part of the Master in AI for Architecture & the Built Environment 2024–25, during the 2nd and 3rd term research studio.
 Institution: IAAC – Institute for Advanced Architecture of Catalonia
