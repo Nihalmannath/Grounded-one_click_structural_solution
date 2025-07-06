@@ -26,8 +26,13 @@ Features:
 
 Output:
 JSON/CSV of detected structural elements (walls, floors, columns)
-Structural grid visualized with matplotlib or Rhino3DM (optional)
+Structural grid visualized
+
+![Screenshot 2025-07-06 141224](https://github.com/user-attachments/assets/3b896688-e541-4857-b79b-5688208dc4fb)
+
 PyNite-based summary report: displacements, reaction forces, and warnings
+
+![Screenshot 2025-07-06 141147](https://github.com/user-attachments/assets/4733d67a-be14-4613-bc02-640a1266903a)
 
 Developed as part of the Master in AI for Architecture & the Built Environment 2024–25, during the 2nd and 3rd term research studio.
 Institution: IAAC – Institute for Advanced Architecture of Catalonia
