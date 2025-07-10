@@ -46,6 +46,9 @@ Developed as part of the Master in AI for Architecture & the Built Environment 2
 Institution: IAAC – Institute for Advanced Architecture of Catalonia
 Special Thanks: Faculty and advisors at IAAC for technical and theoretical guidance.
 Refer for more info: https://blog.iaac.net/grounded-structural-generation-tool-for-architects/
+Multi-Model-RAG 
+
+<img width="2245" height="1299" alt="Structural parsed" src="https://github.com/user-attachments/assets/7ef3941b-fb94-403c-9431-a79da47691cd" />
 
 
 
